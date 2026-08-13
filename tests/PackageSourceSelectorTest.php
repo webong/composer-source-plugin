@@ -16,5 +16,7 @@ final class PackageSourceSelectorTest extends TestCase
         self::assertStringContainsString('`external`', $readme);
         self::assertStringContainsString('`auto`', $readme);
         self::assertStringContainsString('zorvia/web-proxy', $readme);
+        self::assertStringContainsString('"packages"', $readme);
+        self::assertStringContainsString('"aliases"', $readme);
     }
 }

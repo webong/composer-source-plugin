@@ -12,7 +12,7 @@ Configure the winner in the consuming application's root `composer.json`:
 {
     "extra": {
         "composer-source": {
-            "sources": {
+            "packages": {
                 "zorvia/web-proxy": {
                     "preference": "auto",
                     "local_path": "ext/web-proxy",
@@ -53,7 +53,7 @@ which is suggested rather than required:
             "include": ["ext/web-proxy/composer.json"]
         },
         "composer-source": {
-            "sources": {
+            "packages": {
                 "zorvia/web-proxy": {
                     "preference": "local",
                     "local_manifest": "ext/web-proxy/composer.json"
@@ -85,22 +85,33 @@ supported:
 }
 ```
 
-## Namespace aliases
+## Unified configuration
 
-A package can opt into generated aliases with:
+Package source selection and namespace aliases are configured together under
+`extra.composer-source`:
 
 ```json
 {
     "extra": {
-        "namespace-alias": {
-            "Webong\\WebhookProxy\\": "Zorvia\\WebhookProxy\\"
+        "composer-source": {
+            "packages": {
+                "zorvia/web-proxy": {
+                    "preference": "local",
+                    "local_manifest": "ext/web-proxy/composer.json"
+                }
+            },
+            "aliases": {
+                "Webong\\WebhookProxy\\": "Zorvia\\WebhookProxy\\"
+            }
         }
     }
 }
 ```
 
-The plugin discovers classes, interfaces, traits, and enums and writes the
-compatibility aliases during Composer's autoload generation.
+`packages` controls which implementation wins. `aliases` is a map from an
+existing namespace prefix to the compatibility namespace prefix. The plugin
+discovers classes, interfaces, traits, and enums in installed packages and
+writes the aliases during Composer's autoload generation.
 
 Because Composer plugins execute code during dependency operations, consumers
 must explicitly allow the plugin:

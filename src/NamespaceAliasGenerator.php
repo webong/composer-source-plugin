@@ -13,7 +13,8 @@ use RuntimeException;
 
 final class NamespaceAliasGenerator
 {
-    private const EXTRA_KEY = 'namespace-alias';
+    private const EXTRA_KEY = 'composer-source';
+    private const ALIASES_KEY = 'aliases';
     private const AUTOLOAD_FILE = 'namespace_aliases.php';
     private const AUTOLOAD_FILES_MARKER = 'webong/composer-source-plugin';
 
@@ -30,8 +31,10 @@ final class NamespaceAliasGenerator
         $generatedFile = $vendorDirectory . '/composer/' . self::AUTOLOAD_FILE;
         $aliases = [];
 
+        $configured = $this->configuredAliases();
+
         foreach ($this->composer->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
-            $aliases = array_merge($aliases, $this->aliasesForPackage($package));
+            $aliases = array_merge($aliases, $this->aliasesForPackage($package, $configured));
         }
 
         $this->writeAliasFile($generatedFile, $aliases);
@@ -43,10 +46,9 @@ final class NamespaceAliasGenerator
     }
 
     /** @return list<array{source: string, alias: string, kind: string}> */
-    private function aliasesForPackage(PackageInterface $package): array
+    /** @param array<string, string> $configured */
+    private function aliasesForPackage(PackageInterface $package, array $configured): array
     {
-        $configured = $package->getExtra()[self::EXTRA_KEY] ?? [];
-
         if (! is_array($configured) || $configured === []) {
             return [];
         }
@@ -77,6 +79,22 @@ final class NamespaceAliasGenerator
         }
 
         return $aliases;
+    }
+
+    /** @return array<string, string> */
+    private function configuredAliases(): array
+    {
+        $extra = $this->composer->getPackage()->getExtra()[self::EXTRA_KEY] ?? [];
+        $aliases = is_array($extra) ? ($extra[self::ALIASES_KEY] ?? []) : [];
+
+        if (! is_array($aliases)) {
+            return [];
+        }
+
+        return array_filter(
+            $aliases,
+            static fn (mixed $alias): bool => is_string($alias),
+        );
     }
 
     /** @return list<array{name: string, kind: string}> */

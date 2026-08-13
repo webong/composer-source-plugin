@@ -11,7 +11,7 @@ use Composer\Package\PackageInterface;
 final class PackageSourceSelector
 {
     private const EXTRA_KEY = 'composer-source';
-    private const SOURCES_KEY = 'sources';
+    private const PACKAGES_KEY = 'packages';
     private const LOCAL = 'local';
     private const EXTERNAL = 'external';
     private const AUTO = 'auto';
@@ -24,15 +24,15 @@ final class PackageSourceSelector
 
     public function select(object $event): void
     {
-        $sources = $this->sourceConfiguration();
-        if ($sources === [] || ! method_exists($event, 'getPackages') || ! method_exists($event, 'setPackages')) {
+        $packagesConfiguration = $this->packageConfiguration();
+        if ($packagesConfiguration === [] || ! method_exists($event, 'getPackages') || ! method_exists($event, 'setPackages')) {
             return;
         }
 
         $packages = $event->getPackages();
         $selected = [];
 
-        foreach ($sources as $packageName => $configuration) {
+        foreach ($packagesConfiguration as $packageName => $configuration) {
             if (! is_array($configuration)) {
                 continue;
             }
@@ -99,12 +99,12 @@ final class PackageSourceSelector
     }
 
     /** @return array<string, array<string, mixed>> */
-    private function sourceConfiguration(): array
+    private function packageConfiguration(): array
     {
         $extra = $this->composer->getPackage()->getExtra()[self::EXTRA_KEY] ?? [];
-        $sources = is_array($extra) ? ($extra[self::SOURCES_KEY] ?? []) : [];
+        $packages = is_array($extra) ? ($extra[self::PACKAGES_KEY] ?? []) : [];
 
-        return is_array($sources) ? $sources : [];
+        return is_array($packages) ? $packages : [];
     }
 
     /** @param array<string, mixed> $configuration */
