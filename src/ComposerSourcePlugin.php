@@ -15,19 +15,24 @@ final class ComposerSourcePlugin implements PluginInterface, EventSubscriberInte
 {
     private ?Composer $composer = null;
 
+    private ?IOInterface $io = null;
+
     public function activate(Composer $composer, IOInterface $io): void
     {
         $this->composer = $composer;
+        $this->io = $io;
     }
 
     public function deactivate(Composer $composer, IOInterface $io): void
     {
         $this->composer = null;
+        $this->io = null;
     }
 
     public function uninstall(Composer $composer, IOInterface $io): void
     {
         $this->composer = null;
+        $this->io = null;
     }
 
     public static function getSubscribedEvents(): array
@@ -47,11 +52,11 @@ final class ComposerSourcePlugin implements PluginInterface, EventSubscriberInte
      */
     public function selectPackageSources(object $event): void
     {
-        if (! $this->composer instanceof Composer || ! method_exists($event, 'getPackages')) {
+        if (! $this->composer instanceof Composer || ! $this->io instanceof IOInterface || ! method_exists($event, 'getPackages')) {
             return;
         }
 
-        (new PackageSourceSelector($this->composer, $event->getIO()))->select($event);
+        (new PackageSourceSelector($this->composer, $this->io))->select($event);
     }
 
     public function generateAliases(Event $event): void

@@ -13,7 +13,7 @@ Configure the winner in the consuming application's root `composer.json`:
     "extra": {
         "composer-source": {
             "packages": {
-                "zorvia/web-proxy": {
+                "webong/web-proxy": {
                     "preference": "auto",
                     "local_path": "ext/web-proxy",
                     "local_manifest": "ext/web-proxy/composer.json"
@@ -46,7 +46,7 @@ which is suggested rather than required:
     "require": {
         "webong/composer-source-plugin": "^1.0",
         "wikimedia/composer-merge-plugin": "^2.1",
-        "zorvia/web-proxy": "@dev"
+        "webong/web-proxy": "@dev"
     },
     "extra": {
         "merge-plugin": {
@@ -54,7 +54,7 @@ which is suggested rather than required:
         },
         "composer-source": {
             "packages": {
-                "zorvia/web-proxy": {
+                "webong/web-proxy": {
                     "preference": "local",
                     "local_manifest": "ext/web-proxy/composer.json"
                 }
@@ -80,7 +80,7 @@ supported:
         }
     ],
     "require": {
-        "zorvia/web-proxy": "@dev"
+        "webong/web-proxy": "@dev"
     }
 }
 ```
