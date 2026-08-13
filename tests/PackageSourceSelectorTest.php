@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Webong\ComposerNamespaceAlias\Tests;
+namespace Webong\ComposerSource\Tests;
 
 use PHPUnit\Framework\TestCase;
 
@@ -12,7 +12,9 @@ final class PackageSourceSelectorTest extends TestCase
     {
         $readme = (string) file_get_contents(__DIR__ . '/../README.md');
 
-        self::assertStringContainsString('`local`, `external`, and `auto`', $readme);
+        self::assertStringContainsString('`local`', $readme);
+        self::assertStringContainsString('`external`', $readme);
+        self::assertStringContainsString('`auto`', $readme);
         self::assertStringContainsString('zorvia/web-proxy', $readme);
     }
 }

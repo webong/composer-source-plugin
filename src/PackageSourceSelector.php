@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Webong\ComposerNamespaceAlias;
+namespace Webong\ComposerSource;
 
 use Composer\Composer;
 use Composer\IO\IOInterface;
@@ -10,7 +10,7 @@ use Composer\Package\PackageInterface;
 
 final class PackageSourceSelector
 {
-    private const EXTRA_KEY = 'composer-namespace-alias';
+    private const EXTRA_KEY = 'composer-source';
     private const SOURCES_KEY = 'sources';
     private const LOCAL = 'local';
     private const EXTERNAL = 'external';

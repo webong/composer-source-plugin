@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Webong\ComposerNamespaceAlias;
+namespace Webong\ComposerSource;
 
 use Composer\Composer;
 use Composer\IO\IOInterface;
@@ -15,7 +15,7 @@ final class NamespaceAliasGenerator
 {
     private const EXTRA_KEY = 'namespace-alias';
     private const AUTOLOAD_FILE = 'namespace_aliases.php';
-    private const AUTOLOAD_FILES_MARKER = 'webong/composer-namespace-alias';
+    private const AUTOLOAD_FILES_MARKER = 'webong/composer-source-plugin';
 
     public function __construct(
         private readonly Composer $composer,

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Webong\ComposerNamespaceAlias;
+namespace Webong\ComposerSource;
 
 use Composer\Composer;
 use Composer\IO\IOInterface;
@@ -11,7 +11,7 @@ use Composer\Script\Event;
 use Composer\Script\ScriptEvents;
 use Composer\EventDispatcher\EventSubscriberInterface;
 
-final class NamespaceAliasPlugin implements PluginInterface, EventSubscriberInterface
+final class ComposerSourcePlugin implements PluginInterface, EventSubscriberInterface
 {
     private ?Composer $composer = null;
 

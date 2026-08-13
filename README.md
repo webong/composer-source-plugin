@@ -1,54 +1,17 @@
-# Composer Namespace Alias
+# Composer Source Plugin
 
-`webong/composer-namespace-alias` is a Composer plugin that generates PHP namespace compatibility aliases during `composer dump-autoload`.
+`webong/composer-source-plugin` selects the winning source when a Composer
+package is available both as a local merged manifest and as an external
+package. It also retains the optional namespace-compatibility alias generator.
 
-## Configuration
+## Source selection
 
-Add the plugin and declare an alias on the package whose classes should be exposed under another namespace:
-
-```json
-{
-    "extra": {
-        "namespace-alias": {
-            "Webong\\WebhookProxy\\": "Zorvia\\WebhookProxy\\"
-        }
-    }
-}
-```
-
-The plugin discovers classes, interfaces, traits, and enums in that package and generates aliases in Composer's autoload files. The original namespace remains valid, so this is suitable for gradual migrations.
-
-Because Composer plugins execute code while installing dependencies, consumers must explicitly allow the plugin:
-
-```json
-{
-    "config": {
-        "allow-plugins": {
-            "webong/composer-namespace-alias": true
-        }
-    }
-}
-```
-
-## Development
-
-```bash
-composer install
-composer test
-```
-
-The plugin requires Composer 2 and PHP 8.1 or newer.
-
-## Selecting a local or external package source
-
-When a package has both a local path checkout and an external Composer
-package, configure the preference in the consuming application's root
-`composer.json`:
+Configure the winner in the consuming application's root `composer.json`:
 
 ```json
 {
     "extra": {
-        "composer-namespace-alias": {
+        "composer-source": {
             "sources": {
                 "zorvia/web-proxy": {
                     "preference": "auto",
@@ -61,12 +24,51 @@ package, configure the preference in the consuming application's root
 }
 ```
 
-Supported values are `local`, `external`, and `auto`. `auto` chooses a path
-repository when one is available and otherwise uses the external package.
+The preference can be:
 
-Declare the local checkout as a path repository with the same package name;
-do not merge its manifest into the root package alongside the external
-requirement:
+- `local`: the local manifest/path source wins.
+- `external`: the normal Composer package wins.
+- `auto`: local wins when the configured manifest exists; otherwise external wins.
+
+The plugin removes the losing package candidate before Composer resolves the
+dependency pool. When the external source wins, it also removes the local
+manifest's merged autoload and dependency contributions. This prevents two
+implementations from exposing the same namespace.
+
+## Local manifest merging
+
+The plugin is compatible with
+[`wikimedia/composer-merge-plugin`](https://github.com/wikimedia/composer-merge-plugin),
+which is suggested rather than required:
+
+```json
+{
+    "require": {
+        "webong/composer-source-plugin": "^1.0",
+        "wikimedia/composer-merge-plugin": "^2.1",
+        "zorvia/web-proxy": "@dev"
+    },
+    "extra": {
+        "merge-plugin": {
+            "include": ["ext/web-proxy/composer.json"]
+        },
+        "composer-source": {
+            "sources": {
+                "zorvia/web-proxy": {
+                    "preference": "local",
+                    "local_manifest": "ext/web-proxy/composer.json"
+                }
+            }
+        }
+    }
+}
+```
+
+The local and external definitions may both be declared, but only the
+configured winner remains active in the Composer build.
+
+For local development without manifest merging, a path repository is also
+supported:
 
 ```json
 {
@@ -82,3 +84,42 @@ requirement:
     }
 }
 ```
+
+## Namespace aliases
+
+A package can opt into generated aliases with:
+
+```json
+{
+    "extra": {
+        "namespace-alias": {
+            "Webong\\WebhookProxy\\": "Zorvia\\WebhookProxy\\"
+        }
+    }
+}
+```
+
+The plugin discovers classes, interfaces, traits, and enums and writes the
+compatibility aliases during Composer's autoload generation.
+
+Because Composer plugins execute code during dependency operations, consumers
+must explicitly allow the plugin:
+
+```json
+{
+    "config": {
+        "allow-plugins": {
+            "webong/composer-source-plugin": true
+        }
+    }
+}
+```
+
+## Development
+
+```bash
+composer install
+composer test
+```
+
+Requires Composer 2 and PHP 8.1 or newer.
