@@ -240,7 +240,7 @@ final class NamespaceAliasGenerator
         $contents = preg_replace('/\s*' . preg_quote($key, '/') . '\s*=>[^\n]+,\n/', "\n", $contents) ?? $contents;
 
         if ($enabled) {
-            $contents = preg_replace('/return array \(\n/', "return array (\n" . $entry, $contents, 1) ?? $contents;
+            $contents = preg_replace('/return array\s*\(\s*\n/', "return array(\n" . $entry, $contents, 1) ?? $contents;
         }
 
         file_put_contents($autoloadFiles, $contents);
