@@ -16,6 +16,7 @@ final class NamespaceAliasGenerator
     private const EXTRA_KEY = 'composer-source';
     private const ALIASES_KEY = 'aliases';
     private const AUTOLOAD_FILE = 'namespace_aliases.php';
+    private const CONTAINER_ALIASES_FILE = 'source_aliases.php';
     private const AUTOLOAD_FILES_MARKER = 'webong/composer-source-plugin';
 
     public function __construct(
@@ -29,6 +30,7 @@ final class NamespaceAliasGenerator
         $vendorDirectory = $this->composer->getConfig()->get('vendor-dir');
         $autoloadFiles = $vendorDirectory . '/composer/autoload_files.php';
         $generatedFile = $vendorDirectory . '/composer/' . self::AUTOLOAD_FILE;
+        $containerAliasesFile = $vendorDirectory . '/composer/' . self::CONTAINER_ALIASES_FILE;
         $aliases = [];
 
         $configured = $this->configuredAliases();
@@ -38,6 +40,7 @@ final class NamespaceAliasGenerator
         }
 
         $this->writeAliasFile($generatedFile, $aliases);
+        $this->writeContainerAliasesFile($containerAliasesFile, $aliases);
         $this->registerAutoloadFile($autoloadFiles, $generatedFile, $aliases !== []);
 
         if ($aliases !== []) {
@@ -104,6 +107,9 @@ final class NamespaceAliasGenerator
         $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory));
 
         foreach ($files as $file) {
+            if ($this->isExcludedPath($file->getPathname(), $directory)) {
+                continue;
+            }
             if (! $file->isFile() || $file->getExtension() !== 'php') {
                 continue;
             }
@@ -112,6 +118,13 @@ final class NamespaceAliasGenerator
         }
 
         return $symbols;
+    }
+
+    private function isExcludedPath(string $file, string $directory): bool
+    {
+        $relative = ltrim(str_replace($directory, '', $file), DIRECTORY_SEPARATOR);
+
+        return preg_match('/^(?:tests?|vendor|build|dist)(?:'.preg_quote(DIRECTORY_SEPARATOR, '/').'|$)/i', $relative) === 1;
     }
 
     /** @return list<array{name: string, kind: string}> */
@@ -221,6 +234,23 @@ final class NamespaceAliasGenerator
             $contents .= "if ({$checker}({$source}) && ! {$checker}({$target})) { class_alias({$source}, {$target}); }\n";
         }
 
+        file_put_contents($file, $contents);
+    }
+
+    /** @param list<array{source: string, alias: string, kind: string}> $aliases */
+    private function writeContainerAliasesFile(string $file, array $aliases): void
+    {
+        $containerAliases = [];
+
+        foreach ($aliases as $alias) {
+            if (! in_array($alias['kind'], ['class', 'interface'], true)) {
+                continue;
+            }
+
+            $containerAliases[$alias['source']] = $alias['alias'];
+        }
+
+        $contents = "<?php\n\ndeclare(strict_types=1);\n\nreturn ".var_export($containerAliases, true).";\n";
         file_put_contents($file, $contents);
     }
 

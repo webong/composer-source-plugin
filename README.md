@@ -101,7 +101,7 @@ Package source selection and namespace aliases are configured together under
                 }
             },
             "aliases": {
-                "Webong\\WebhookProxy\\": "Zorvia\\WebhookProxy\\"
+                "Webong\\WebhookProxy\\": "App\\WebhookProxy\\"
             }
         }
     }
@@ -110,8 +110,26 @@ Package source selection and namespace aliases are configured together under
 
 `packages` controls which implementation wins. `aliases` is a map from an
 existing namespace prefix to the compatibility namespace prefix. The plugin
-discovers classes, interfaces, traits, and enums in installed packages and
-writes the aliases during Composer's autoload generation.
+discovers production classes, interfaces, traits, and enums in installed
+packages and writes the aliases during Composer's autoload generation. It also
+writes the production class/interface aliases to
+`vendor/composer/source_aliases.php` for runtime integrations.
+
+### Illuminate container aliases
+
+When the consuming application uses Illuminate, the plugin's discovered
+service provider reads `source_aliases.php` and registers the compatibility
+namespaces with the service container. This means a package can register its
+services under its published namespace while the application continues to
+resolve its compatibility namespace:
+
+```php
+app('App\\WebProxy\\WebProxy');
+```
+
+The bridge is optional and is not loaded in non-Illuminate applications. The
+Composer plugin remains framework-neutral; only the generated metadata is
+shared with the Illuminate integration.
 
 Because Composer plugins execute code during dependency operations, consumers
 must explicitly allow the plugin:

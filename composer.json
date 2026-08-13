@@ -24,7 +24,12 @@
         }
     },
     "extra": {
-        "class": "Webong\\ComposerSource\\ComposerSourcePlugin"
+        "class": "Webong\\ComposerSource\\ComposerSourcePlugin",
+        "laravel": {
+            "providers": [
+                "Webong\\ComposerSource\\Illuminate\\ComposerSourceServiceProvider"
+            ]
+        }
     },
     "scripts": {
         "test": "phpunit --configuration phpunit.xml.dist"
