@@ -157,6 +157,9 @@ final class NamespaceAliasGenerator
         }
 
         $paths = [];
+        $rebasedRoot = $vendorDirectory . '/composer/rebased/' . str_replace('/', '--', $package->getName());
+        $this->rebasePackageFiles($installPath, $rebasedRoot, $definition);
+
         foreach ($sourceDirectories as $sourceDirectory) {
             if (! is_string($sourceDirectory)) {
                 continue;
@@ -167,21 +170,20 @@ final class NamespaceAliasGenerator
                 continue;
             }
 
-            $rebasedPath = $vendorDirectory . '/composer/rebased/' . str_replace('/', '--', $package->getName()) . '/' . trim($sourceDirectory, '/');
-            $this->rebaseDirectory($sourcePath, $rebasedPath, $definition);
+            $rebasedPath = $rebasedRoot . '/' . trim($sourceDirectory, '/');
             $paths[] = $rebasedPath;
         }
 
         return $paths;
     }
 
-    private function rebaseDirectory(string $sourcePath, string $rebasedPath, NamespaceAliasDefinition $definition): void
+    private function rebasePackageFiles(string $sourcePath, string $rebasedPath, NamespaceAliasDefinition $definition): void
     {
         $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($sourcePath));
         $rebaser = new NamespaceRebaser;
 
         foreach ($files as $file) {
-            if (! $file->isFile() || $file->getExtension() !== 'php') {
+            if (! $file->isFile() || $this->isExcludedPath($file->getPathname(), $sourcePath)) {
                 continue;
             }
 
@@ -190,6 +192,14 @@ final class NamespaceAliasGenerator
             $targetDirectory = dirname($target);
             if (! is_dir($targetDirectory) && ! mkdir($targetDirectory, 0777, true) && ! is_dir($targetDirectory)) {
                 throw new RuntimeException('Unable to create rebased source directory: ' . $targetDirectory);
+            }
+
+            if ($file->getExtension() !== 'php') {
+                if (! copy($file->getPathname(), $target)) {
+                    throw new RuntimeException('Unable to copy package file: ' . $file->getPathname());
+                }
+
+                continue;
             }
 
             $contents = file_get_contents($file->getPathname());
