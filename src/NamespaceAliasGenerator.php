@@ -157,7 +157,8 @@ final class NamespaceAliasGenerator
         }
 
         $paths = [];
-        $rebasedRoot = $vendorDirectory . '/composer/rebased/' . str_replace('/', '--', $package->getName());
+        $rebasedRelativeRoot = 'rebased/' . str_replace('/', '--', $package->getName());
+        $rebasedRoot = $vendorDirectory . '/composer/' . $rebasedRelativeRoot;
         $this->rebasePackageFiles($installPath, $rebasedRoot, $definition);
 
         foreach ($sourceDirectories as $sourceDirectory) {
@@ -170,8 +171,7 @@ final class NamespaceAliasGenerator
                 continue;
             }
 
-            $rebasedPath = $rebasedRoot . '/' . trim($sourceDirectory, '/');
-            $paths[] = $rebasedPath;
+            $paths[] = $rebasedRelativeRoot . '/' . trim($sourceDirectory, '/');
         }
 
         return $paths;
@@ -367,7 +367,7 @@ spl_autoload_register(static function (string $class) use ($mappings): void {
 
         $relativeClass = str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
         foreach ($paths as $path) {
-            $file = $path . '/' . $relativeClass;
+            $file = __DIR__ . '/' . $path . '/' . $relativeClass;
             if (is_file($file)) {
                 require $file;
 
