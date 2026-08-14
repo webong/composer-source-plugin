@@ -101,18 +101,27 @@ Package source selection and namespace aliases are configured together under
                 }
             },
             "aliases": {
-                "Webong\\WebhookProxy\\": "App\\WebhookProxy\\"
+                "Webong\\WebhookProxy\\": "App\\WebhookProxy\\",
+                "webong/web-flow": {
+                    "Webong\\WebFlow\\": "Zorvia\\WebFlow\\",
+                    "type": "rebase"
+                },
+                "webong/web-proxy": {
+                    "Webong\\WebProxy\\": "Zorvia\\WebProxy\\"
+                }
             }
         }
     }
 }
 ```
 
-`packages` controls which implementation wins. `aliases` is a map from an
-existing namespace prefix to the compatibility namespace prefix. The plugin
-discovers production classes, interfaces, traits, and enums in installed
-packages and writes the aliases during Composer's autoload generation. It also
-writes the production class/interface aliases to
+`packages` controls which implementation wins. `aliases` supports a legacy
+flat map and a package-scoped map. A mapping defaults to `simple`, which
+creates PHP compatibility aliases. A package-scoped mapping can set
+`"type": "rebase"` to opt into source rebasing. The plugin discovers
+production classes, interfaces, traits, and enums in installed packages and
+writes simple aliases during Composer's autoload generation. It also writes
+the production class/interface aliases to
 `vendor/composer/source_aliases.php` for runtime integrations.
 
 ### Illuminate container aliases

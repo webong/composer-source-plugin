@@ -16,8 +16,10 @@ final class NamespaceAliasGenerator
     private const EXTRA_KEY = 'composer-source';
     private const ALIASES_KEY = 'aliases';
     private const AUTOLOAD_FILE = 'namespace_aliases.php';
+    private const REBASE_AUTOLOAD_FILE = 'namespace_rebases.php';
     private const CONTAINER_ALIASES_FILE = 'source_aliases.php';
     private const AUTOLOAD_FILES_MARKER = 'webong/composer-source-plugin';
+    private const REBASE_AUTOLOAD_FILES_MARKER = 'webong/composer-source-plugin-rebases';
 
     public function __construct(
         private readonly Composer $composer,
@@ -30,26 +32,35 @@ final class NamespaceAliasGenerator
         $vendorDirectory = $this->composer->getConfig()->get('vendor-dir');
         $autoloadFiles = $vendorDirectory . '/composer/autoload_files.php';
         $generatedFile = $vendorDirectory . '/composer/' . self::AUTOLOAD_FILE;
+        $rebaseGeneratedFile = $vendorDirectory . '/composer/' . self::REBASE_AUTOLOAD_FILE;
         $containerAliasesFile = $vendorDirectory . '/composer/' . self::CONTAINER_ALIASES_FILE;
         $aliases = [];
+        $rebases = [];
 
         $configured = $this->configuredAliases();
 
         foreach ($this->composer->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
             $aliases = array_merge($aliases, $this->aliasesForPackage($package, $configured));
+            $rebases = array_merge($rebases, $this->rebasesForPackage($package, $configured, $vendorDirectory));
         }
 
         $this->writeAliasFile($generatedFile, $aliases);
+        $this->writeRebaseAutoloadFile($rebaseGeneratedFile, $rebases);
         $this->writeContainerAliasesFile($containerAliasesFile, $aliases);
-        $this->registerAutoloadFile($autoloadFiles, $generatedFile, $aliases !== []);
+        $this->registerAutoloadFile($autoloadFiles, self::AUTOLOAD_FILES_MARKER, self::AUTOLOAD_FILE, $aliases !== []);
+        $this->registerAutoloadFile($autoloadFiles, self::REBASE_AUTOLOAD_FILES_MARKER, self::REBASE_AUTOLOAD_FILE, $rebases !== []);
 
         if ($aliases !== []) {
             $this->io->writeError(sprintf('<info>Generated %d namespace aliases.</info>', count($aliases)));
         }
+
+        if ($rebases !== []) {
+            $this->io->writeError(sprintf('<info>Generated %d namespace rebases.</info>', count($rebases)));
+        }
     }
 
     /** @return list<array{source: string, alias: string, kind: string}> */
-    /** @param array<string, string> $configured */
+    /** @param list<NamespaceAliasDefinition> $configured */
     private function aliasesForPackage(PackageInterface $package, array $configured): array
     {
         if (! is_array($configured) || $configured === []) {
@@ -62,10 +73,13 @@ final class NamespaceAliasGenerator
         }
 
         $aliases = [];
-        foreach ($configured as $sourcePrefix => $aliasPrefix) {
-            if (! is_string($sourcePrefix) || ! is_string($aliasPrefix)) {
+        foreach ($configured as $definition) {
+            if ($definition->type !== NamespaceAliasDefinition::TYPE_SIMPLE || ! $definition->appliesTo($package->getName())) {
                 continue;
             }
+
+            $sourcePrefix = $definition->sourcePrefix;
+            $aliasPrefix = $definition->targetPrefix;
 
             foreach ($this->discoverSymbols($installPath) as $symbol) {
                 if (! str_starts_with($symbol['name'], $sourcePrefix)) {
@@ -84,20 +98,107 @@ final class NamespaceAliasGenerator
         return $aliases;
     }
 
-    /** @return array<string, string> */
+    /** @return list<NamespaceAliasDefinition> */
     private function configuredAliases(): array
     {
         $extra = $this->composer->getPackage()->getExtra()[self::EXTRA_KEY] ?? [];
         $aliases = is_array($extra) ? ($extra[self::ALIASES_KEY] ?? []) : [];
 
-        if (! is_array($aliases)) {
+        return is_array($aliases) ? NamespaceAliasConfiguration::parse($aliases) : [];
+    }
+
+    /**
+     * @param list<NamespaceAliasDefinition> $configured
+     * @return list<array{source: string, target: string, target_prefix: string, kind: string, paths: list<string>}>
+     */
+    private function rebasesForPackage(PackageInterface $package, array $configured, string $vendorDirectory): array
+    {
+        $installPath = $this->composer->getInstallationManager()->getInstallPath($package);
+        if (! is_string($installPath) || ! is_dir($installPath)) {
             return [];
         }
 
-        return array_filter(
-            $aliases,
-            static fn (mixed $alias): bool => is_string($alias),
-        );
+        $rebases = [];
+        foreach ($configured as $definition) {
+            if ($definition->type !== NamespaceAliasDefinition::TYPE_REBASE || ! $definition->appliesTo($package->getName())) {
+                continue;
+            }
+
+            $paths = $this->rebasePackage($package, $installPath, $vendorDirectory, $definition);
+            if ($paths === []) {
+                continue;
+            }
+
+            foreach ($this->discoverSymbols($installPath) as $symbol) {
+                if (! str_starts_with($symbol['name'], $definition->sourcePrefix)) {
+                    continue;
+                }
+
+                $rebases[] = [
+                    'source' => $symbol['name'],
+                    'target' => $definition->targetPrefix . substr($symbol['name'], strlen($definition->sourcePrefix)),
+                    'target_prefix' => $definition->targetPrefix,
+                    'kind' => $symbol['kind'],
+                    'paths' => $paths,
+                ];
+            }
+        }
+
+        return $rebases;
+    }
+
+    /** @return list<string> */
+    private function rebasePackage(PackageInterface $package, string $installPath, string $vendorDirectory, NamespaceAliasDefinition $definition): array
+    {
+        $autoload = $package->getAutoload()['psr-4'] ?? [];
+        $sourceDirectories = $autoload[$definition->sourcePrefix] ?? [];
+        if (! is_array($sourceDirectories)) {
+            $sourceDirectories = [$sourceDirectories];
+        }
+
+        $paths = [];
+        foreach ($sourceDirectories as $sourceDirectory) {
+            if (! is_string($sourceDirectory)) {
+                continue;
+            }
+
+            $sourcePath = $installPath . '/' . trim($sourceDirectory, '/');
+            if (! is_dir($sourcePath)) {
+                continue;
+            }
+
+            $rebasedPath = $vendorDirectory . '/composer/rebased/' . str_replace('/', '--', $package->getName()) . '/' . trim($sourceDirectory, '/');
+            $this->rebaseDirectory($sourcePath, $rebasedPath, $definition);
+            $paths[] = $rebasedPath;
+        }
+
+        return $paths;
+    }
+
+    private function rebaseDirectory(string $sourcePath, string $rebasedPath, NamespaceAliasDefinition $definition): void
+    {
+        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($sourcePath));
+        $rebaser = new NamespaceRebaser;
+
+        foreach ($files as $file) {
+            if (! $file->isFile() || $file->getExtension() !== 'php') {
+                continue;
+            }
+
+            $relativePath = ltrim(str_replace($sourcePath, '', $file->getPathname()), DIRECTORY_SEPARATOR);
+            $target = $rebasedPath . DIRECTORY_SEPARATOR . $relativePath;
+            $targetDirectory = dirname($target);
+            if (! is_dir($targetDirectory) && ! mkdir($targetDirectory, 0777, true) && ! is_dir($targetDirectory)) {
+                throw new RuntimeException('Unable to create rebased source directory: ' . $targetDirectory);
+            }
+
+            $contents = file_get_contents($file->getPathname());
+            if ($contents === false) {
+                throw new RuntimeException('Unable to read PHP file: ' . $file->getPathname());
+            }
+
+            file_put_contents($target, $rebaser->rebase($contents, $definition));
+        }
     }
 
     /** @return list<array{name: string, kind: string}> */
@@ -237,6 +338,52 @@ final class NamespaceAliasGenerator
         file_put_contents($file, $contents);
     }
 
+    /** @param list<array{source: string, target: string, target_prefix: string, kind: string, paths: list<string>}> $rebases */
+    private function writeRebaseAutoloadFile(string $file, array $rebases): void
+    {
+        $mappings = [];
+        foreach ($rebases as $rebase) {
+            $mappings[$rebase['target_prefix']] = $rebase['paths'];
+        }
+
+        $contents = "<?php\n\ndeclare(strict_types=1);\n\n";
+        $contents .= '$mappings = ' . var_export($mappings, true) . ";\n";
+        $contents .= <<<'PHP'
+spl_autoload_register(static function (string $class) use ($mappings): void {
+    foreach ($mappings as $prefix => $paths) {
+        if (! str_starts_with($class, $prefix)) {
+            continue;
+        }
+
+        $relativeClass = str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
+        foreach ($paths as $path) {
+            $file = $path . '/' . $relativeClass;
+            if (is_file($file)) {
+                require $file;
+
+                return;
+            }
+        }
+    }
+}, true, true);
+
+PHP;
+
+        foreach ($rebases as $rebase) {
+            $source = var_export($rebase['source'], true);
+            $target = var_export($rebase['target'], true);
+            $checker = match ($rebase['kind']) {
+                'interface' => 'interface_exists',
+                'trait' => 'trait_exists',
+                'enum' => 'enum_exists',
+                default => 'class_exists',
+            };
+            $contents .= "if ({$checker}({$target}) && ! {$checker}({$source}, false)) { class_alias({$target}, {$source}); }\n";
+        }
+
+        file_put_contents($file, $contents);
+    }
+
     /** @param list<array{source: string, alias: string, kind: string}> $aliases */
     private function writeContainerAliasesFile(string $file, array $aliases): void
     {
@@ -254,7 +401,7 @@ final class NamespaceAliasGenerator
         file_put_contents($file, $contents);
     }
 
-    private function registerAutoloadFile(string $autoloadFiles, string $generatedFile, bool $enabled): void
+    private function registerAutoloadFile(string $autoloadFiles, string $marker, string $file, bool $enabled): void
     {
         if (! is_file($autoloadFiles)) {
             return;
@@ -265,8 +412,8 @@ final class NamespaceAliasGenerator
             throw new RuntimeException('Unable to read Composer autoload files.');
         }
 
-        $key = var_export(self::AUTOLOAD_FILES_MARKER, true);
-        $entry = "    {$key} => \$vendorDir . '/composer/" . self::AUTOLOAD_FILE . "',\n";
+        $key = var_export($marker, true);
+        $entry = "    {$key} => \$vendorDir . '/composer/{$file}',\n";
         $contents = preg_replace('/\s*' . preg_quote($key, '/') . '\s*=>[^\n]+,\n/', "\n", $contents) ?? $contents;
 
         if ($enabled) {
