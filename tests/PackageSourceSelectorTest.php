@@ -12,11 +12,17 @@ final class PackageSourceSelectorTest extends TestCase
     {
         $readme = (string) file_get_contents(__DIR__ . '/../README.md');
 
-        self::assertStringContainsString('`local`', $readme);
-        self::assertStringContainsString('`external`', $readme);
+        self::assertStringContainsString('`inline`', $readme);
+        self::assertStringContainsString('`outline`', $readme);
         self::assertStringContainsString('`auto`', $readme);
         self::assertStringContainsString('zorvia/web-proxy', $readme);
-        self::assertStringContainsString('"packages"', $readme);
+        self::assertStringContainsString('"loaders"', $readme);
+        self::assertStringContainsString('"type": "auto"', $readme);
+        self::assertStringNotContainsString('"preference"', $readme);
+        self::assertStringContainsString('"path"', $readme);
+        self::assertStringContainsString('"manifest"', $readme);
+        self::assertStringNotContainsString('"local_path"', $readme);
+        self::assertStringNotContainsString('"local_manifest"', $readme);
         self::assertStringContainsString('"aliases"', $readme);
     }
 }

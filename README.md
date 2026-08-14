@@ -1,7 +1,7 @@
 # Composer Source Plugin
 
 `webong/composer-source-plugin` selects the winning source when a Composer
-package is available both as a local merged manifest and as an external
+package is available both as an inline merged manifest and as an outline
 package. It also retains the optional namespace-compatibility alias generator.
 
 ## Source selection
@@ -12,11 +12,11 @@ Configure the winner in the consuming application's root `composer.json`:
 {
     "extra": {
         "composer-source": {
-            "packages": {
+            "loaders": {
                 "webong/web-proxy": {
-                    "preference": "auto",
-                    "local_path": "ext/web-proxy",
-                    "local_manifest": "ext/web-proxy/composer.json"
+                    "type": "auto",
+                    "path": "ext/web-proxy",
+                    "manifest": "ext/web-proxy/composer.json"
                 }
             }
         }
@@ -24,14 +24,14 @@ Configure the winner in the consuming application's root `composer.json`:
 }
 ```
 
-The preference can be:
+The loader type can be:
 
-- `local`: the local manifest/path source wins.
-- `external`: the normal Composer package wins.
-- `auto`: local wins when the configured manifest exists; otherwise external wins.
+- `inline`: the local manifest/path source wins.
+- `outline`: the normal Composer package wins.
+- `auto`: inline wins when the configured manifest exists; otherwise outline wins.
 
 The plugin removes the losing package candidate before Composer resolves the
-dependency pool. When the external source wins, it also removes the local
+dependency pool. When the outline source wins, it also removes the inline
 manifest's merged autoload and dependency contributions. This prevents two
 implementations from exposing the same namespace.
 
@@ -53,10 +53,10 @@ which is suggested rather than required:
             "include": ["ext/web-proxy/composer.json"]
         },
         "composer-source": {
-            "packages": {
+            "loaders": {
                 "webong/web-proxy": {
-                    "preference": "local",
-                    "local_manifest": "ext/web-proxy/composer.json"
+                    "type": "inline",
+                    "manifest": "ext/web-proxy/composer.json"
                 }
             }
         }
@@ -64,7 +64,7 @@ which is suggested rather than required:
 }
 ```
 
-The local and external definitions may both be declared, but only the
+The inline and outline definitions may both be declared, but only the
 configured winner remains active in the Composer build.
 
 For local development without manifest merging, a path repository is also
@@ -94,10 +94,10 @@ Package source selection and namespace aliases are configured together under
 {
     "extra": {
         "composer-source": {
-            "packages": {
+            "loaders": {
                 "zorvia/web-proxy": {
-                    "preference": "local",
-                    "local_manifest": "ext/web-proxy/composer.json"
+                    "type": "inline",
+                    "manifest": "ext/web-proxy/composer.json"
                 }
             },
             "aliases": {
@@ -115,7 +115,7 @@ Package source selection and namespace aliases are configured together under
 }
 ```
 
-`packages` controls which implementation wins. `aliases` supports a legacy
+`loaders` controls which implementation wins. `aliases` supports a legacy
 flat map and a package-scoped map. A mapping defaults to `simple`, which
 creates PHP compatibility aliases. A package-scoped mapping can set
 `"type": "rebase"` to opt into source rebasing. The plugin discovers

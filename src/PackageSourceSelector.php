@@ -11,9 +11,9 @@ use Composer\Package\PackageInterface;
 final class PackageSourceSelector
 {
     private const EXTRA_KEY = 'composer-source';
-    private const PACKAGES_KEY = 'packages';
-    private const LOCAL = 'local';
-    private const EXTERNAL = 'external';
+    private const LOADERS_KEY = 'loaders';
+    private const INLINE = 'inline';
+    private const OUTLINE = 'outline';
     private const AUTO = 'auto';
 
     public function __construct(
@@ -24,20 +24,20 @@ final class PackageSourceSelector
 
     public function select(object $event): void
     {
-        $packagesConfiguration = $this->packageConfiguration();
-        if ($packagesConfiguration === [] || ! method_exists($event, 'getPackages') || ! method_exists($event, 'setPackages')) {
+        $loaders = $this->loaderConfiguration();
+        if ($loaders === [] || ! method_exists($event, 'getPackages') || ! method_exists($event, 'setPackages')) {
             return;
         }
 
         $packages = $event->getPackages();
         $selected = [];
 
-        foreach ($packagesConfiguration as $packageName => $configuration) {
+        foreach ($loaders as $packageName => $configuration) {
             if (! is_array($configuration)) {
                 continue;
             }
 
-            $preference = $this->preference($configuration);
+            $type = $this->loaderType($configuration);
 
             $candidates = array_values(array_filter(
                 $packages,
@@ -49,7 +49,7 @@ final class PackageSourceSelector
                 continue;
             }
 
-            if (($preference === self::LOCAL || ($preference === self::AUTO && $this->localManifestExists($configuration)))
+            if (($type === self::INLINE || ($type === self::AUTO && $this->localManifestExists($configuration)))
                 && ! $this->hasPathCandidate($candidates)) {
                 foreach ($candidates as $candidate) {
                     $selected[spl_object_id($candidate)] = true;
@@ -58,8 +58,8 @@ final class PackageSourceSelector
                 continue;
             }
 
-            $preference = $this->preference($configuration);
-            $preferred = $this->preferredCandidate($candidates, $preference);
+            $type = $this->loaderType($configuration);
+            $preferred = $this->preferredCandidate($candidates, $type);
 
             if ($preferred === null) {
                 foreach ($candidates as $candidate) {
@@ -77,11 +77,11 @@ final class PackageSourceSelector
 
             $this->io->writeError(sprintf(
                 '<info>%s source selected for %s.</info>',
-                $preference,
+                $type,
                 $packageName,
             ));
 
-            if ($preference === self::EXTERNAL) {
+            if ($type === self::OUTLINE) {
                 $this->removeMergedLocalAutoload($configuration);
                 $this->removeMergedLocalManifest($configuration);
             }
@@ -99,26 +99,26 @@ final class PackageSourceSelector
     }
 
     /** @return array<string, array<string, mixed>> */
-    private function packageConfiguration(): array
+    private function loaderConfiguration(): array
     {
         $extra = $this->composer->getPackage()->getExtra()[self::EXTRA_KEY] ?? [];
-        $packages = is_array($extra) ? ($extra[self::PACKAGES_KEY] ?? []) : [];
+        $loaders = is_array($extra) ? ($extra[self::LOADERS_KEY] ?? []) : [];
 
-        return is_array($packages) ? $packages : [];
+        return is_array($loaders) ? $loaders : [];
     }
 
     /** @param array<string, mixed> $configuration */
-    private function preference(array $configuration): string
+    private function loaderType(array $configuration): string
     {
-        $preference = $configuration['preference'] ?? self::AUTO;
+        $type = $configuration['type'] ?? self::AUTO;
 
-        return in_array($preference, [self::LOCAL, self::EXTERNAL, self::AUTO], true)
-            ? $preference
+        return in_array($type, [self::INLINE, self::OUTLINE, self::AUTO], true)
+            ? $type
             : self::AUTO;
     }
 
     /** @param list<PackageInterface> $candidates */
-    private function preferredCandidate(array $candidates, string $preference): ?PackageInterface
+    private function preferredCandidate(array $candidates, string $type): ?PackageInterface
     {
         $pathCandidates = array_values(array_filter(
             $candidates,
@@ -129,9 +129,9 @@ final class PackageSourceSelector
             static fn (PackageInterface $package): bool => $package->getDistType() !== 'path',
         ));
 
-        return match ($preference) {
-            self::LOCAL => $pathCandidates[0] ?? null,
-            self::EXTERNAL => $externalCandidates[0] ?? null,
+        return match ($type) {
+            self::INLINE => $pathCandidates[0] ?? null,
+            self::OUTLINE => $externalCandidates[0] ?? null,
             default => $pathCandidates[0] ?? $externalCandidates[0] ?? null,
         };
     }
@@ -159,7 +159,7 @@ final class PackageSourceSelector
     /** @param array<string, mixed> $configuration */
     private function localManifestExists(array $configuration): bool
     {
-        $manifest = $configuration['local_manifest'] ?? null;
+        $manifest = $configuration['manifest'] ?? null;
 
         return is_string($manifest) && $manifest !== '' && is_file(getcwd() . '/' . $manifest);
     }
@@ -167,7 +167,7 @@ final class PackageSourceSelector
     /** @param array<string, mixed> $configuration */
     private function removeMergedLocalAutoload(array $configuration): void
     {
-        $localPath = $configuration['local_path'] ?? null;
+        $localPath = $configuration['path'] ?? null;
         $root = $this->composer->getPackage();
 
         if (! is_string($localPath) || $localPath === ''
@@ -212,7 +212,7 @@ final class PackageSourceSelector
     /** @param array<string, mixed> $configuration */
     private function removeMergedLocalManifest(array $configuration): void
     {
-        $manifest = $configuration['local_manifest'] ?? null;
+        $manifest = $configuration['manifest'] ?? null;
         if (! is_string($manifest) || $manifest === '') {
             return;
         }
