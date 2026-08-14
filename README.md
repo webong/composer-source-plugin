@@ -101,13 +101,13 @@ Package source selection and namespace aliases are configured together under
                 }
             },
             "aliases": {
-                "Webong\\WebhookProxy\\": "App\\WebhookProxy\\",
+                "Webong\\WebhookProxy\\": "Alias\\WebhookProxy\\",
                 "webong/web-flow": {
-                    "Webong\\WebFlow\\": "Zorvia\\WebFlow\\",
+                    "Webong\\WebFlow\\": "Alias\\WebFlow\\",
                     "type": "rebase"
                 },
                 "webong/web-proxy": {
-                    "Webong\\WebProxy\\": "Zorvia\\WebProxy\\"
+                    "Webong\\WebProxy\\": "Alias\\WebProxy\\"
                 }
             }
         }
