@@ -421,5 +421,28 @@ PHP;
         }
 
         file_put_contents($autoloadFiles, $contents);
+        $this->registerStaticAutoloadFile(dirname($autoloadFiles) . '/autoload_static.php', $marker, $file, $enabled);
+    }
+
+    private function registerStaticAutoloadFile(string $autoloadStaticFile, string $marker, string $file, bool $enabled): void
+    {
+        if (! is_file($autoloadStaticFile)) {
+            return;
+        }
+
+        $contents = file_get_contents($autoloadStaticFile);
+        if ($contents === false) {
+            throw new RuntimeException('Unable to read Composer static autoload files.');
+        }
+
+        $key = var_export($marker, true);
+        $entry = "        {$key} => __DIR__ . '/{$file}',\n";
+        $contents = preg_replace('/\s*' . preg_quote($key, '/') . '\s*=>[^\n]+,\n/', "\n", $contents) ?? $contents;
+
+        if ($enabled) {
+            $contents = preg_replace('/public static \$files = array \(\s*\n/', "public static \$files = array (\n" . $entry, $contents, 1) ?? $contents;
+        }
+
+        file_put_contents($autoloadStaticFile, $contents);
     }
 }

@@ -18,4 +18,12 @@ final class NamespaceAliasGeneratorTest extends TestCase
             $composer['extra']['class'],
         );
     }
+
+    public function testGeneratedAliasesAreRegisteredForOptimizedComposerAutoloading(): void
+    {
+        $generator = (string) file_get_contents(__DIR__ . '/../src/NamespaceAliasGenerator.php');
+
+        self::assertStringContainsString('registerStaticAutoloadFile', $generator);
+        self::assertStringContainsString("'/autoload_static.php'", $generator);
+    }
 }
