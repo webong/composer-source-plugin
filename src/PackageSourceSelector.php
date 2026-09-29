@@ -10,7 +10,7 @@ use Composer\Package\PackageInterface;
 
 final class PackageSourceSelector
 {
-    private const EXTRA_KEY = 'composer-source';
+    private const EXTRA_KEY = 'source-plugin';
     private const LOADERS_KEY = 'loaders';
     private const INLINE = 'inline';
     private const OUTLINE = 'outline';

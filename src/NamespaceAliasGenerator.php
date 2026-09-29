@@ -13,7 +13,7 @@ use RuntimeException;
 
 final class NamespaceAliasGenerator
 {
-    private const EXTRA_KEY = 'composer-source';
+    private const EXTRA_KEY = 'source-plugin';
     private const ALIASES_KEY = 'aliases';
     private const AUTOLOAD_FILE = 'namespace_aliases.php';
     private const REBASE_AUTOLOAD_FILE = 'namespace_rebases.php';

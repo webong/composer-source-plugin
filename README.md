@@ -11,7 +11,7 @@ Configure the winner in the consuming application's root `composer.json`:
 ```json
 {
     "extra": {
-        "composer-source": {
+        "source-plugin": {
             "loaders": {
                 "webong/web-proxy": {
                     "type": "auto",
@@ -52,7 +52,7 @@ which is suggested rather than required:
         "merge-plugin": {
             "include": ["ext/web-proxy/composer.json"]
         },
-        "composer-source": {
+        "source-plugin": {
             "loaders": {
                 "webong/web-proxy": {
                     "type": "inline",
@@ -88,12 +88,12 @@ supported:
 ## Unified configuration
 
 Package source selection and namespace aliases are configured together under
-`extra.composer-source`:
+`extra.source-plugin`:
 
 ```json
 {
     "extra": {
-        "composer-source": {
+        "source-plugin": {
             "loaders": {
                 "zorvia/web-proxy": {
                     "type": "inline",
