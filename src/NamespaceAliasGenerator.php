@@ -109,7 +109,7 @@ final class NamespaceAliasGenerator
 
     /**
      * @param list<NamespaceAliasDefinition> $configured
-     * @return list<array{source: string, target: string, target_prefix: string, kind: string, paths: list<string>}>
+     * @return list<array{source: string, target: string, target_prefix: string, kind: string, paths: list<string>, files: list<string>}>
      */
     private function rebasesForPackage(PackageInterface $package, array $configured, string $vendorDirectory): array
     {
@@ -124,8 +124,8 @@ final class NamespaceAliasGenerator
                 continue;
             }
 
-            $paths = $this->rebasePackage($package, $installPath, $vendorDirectory, $definition);
-            if ($paths === []) {
+            $rebased = $this->rebasePackage($package, $installPath, $vendorDirectory, $definition);
+            if ($rebased['paths'] === []) {
                 continue;
             }
 
@@ -139,7 +139,8 @@ final class NamespaceAliasGenerator
                     'target' => $definition->targetPrefix . substr($symbol['name'], strlen($definition->sourcePrefix)),
                     'target_prefix' => $definition->targetPrefix,
                     'kind' => $symbol['kind'],
-                    'paths' => $paths,
+                    'paths' => $rebased['paths'],
+                    'files' => $rebased['files'],
                 ];
             }
         }
@@ -147,11 +148,13 @@ final class NamespaceAliasGenerator
         return $rebases;
     }
 
-    /** @return list<string> */
+    /**
+     * @return array{paths: list<string>, files: list<string>}
+     */
     private function rebasePackage(PackageInterface $package, string $installPath, string $vendorDirectory, NamespaceAliasDefinition $definition): array
     {
-        $autoload = $package->getAutoload()['psr-4'] ?? [];
-        $sourceDirectories = $autoload[$definition->sourcePrefix] ?? [];
+        $autoload = $package->getAutoload();
+        $sourceDirectories = $autoload['psr-4'][$definition->sourcePrefix] ?? [];
         if (! is_array($sourceDirectories)) {
             $sourceDirectories = [$sourceDirectories];
         }
@@ -174,7 +177,43 @@ final class NamespaceAliasGenerator
             $paths[] = $rebasedRelativeRoot . '/' . trim($sourceDirectory, '/');
         }
 
-        return $paths;
+        return [
+            'paths' => $paths,
+            'files' => $this->rebasedAutoloadFiles($autoload['files'] ?? [], $installPath, $rebasedRelativeRoot, $definition),
+        ];
+    }
+
+    /**
+     * Composer's "files" autoload entries are not covered by the rebased PSR-4
+     * autoloader, so their rebased copies have to be required explicitly for the
+     * target namespace to expose the same functions. Entries that do not
+     * declare the source namespace are skipped: their rebased copy would be
+     * identical and requiring it would redeclare global symbols.
+     *
+     * @param mixed $files
+     * @return list<string>
+     */
+    private function rebasedAutoloadFiles(mixed $files, string $installPath, string $rebasedRelativeRoot, NamespaceAliasDefinition $definition): array
+    {
+        if (! is_array($files)) {
+            return [];
+        }
+
+        $rebased = [];
+        foreach ($files as $file) {
+            if (! is_string($file) || $file === '') {
+                continue;
+            }
+
+            $contents = @file_get_contents($installPath . '/' . ltrim($file, '/'));
+            if ($contents === false || ! str_contains($contents, rtrim($definition->sourcePrefix, '\\'))) {
+                continue;
+            }
+
+            $rebased[] = $rebasedRelativeRoot . '/' . ltrim($file, '/');
+        }
+
+        return $rebased;
     }
 
     private function rebasePackageFiles(string $sourcePath, string $rebasedPath, NamespaceAliasDefinition $definition): void
@@ -350,13 +389,16 @@ final class NamespaceAliasGenerator
         file_put_contents($file, $contents);
     }
 
-    /** @param list<array{source: string, target: string, target_prefix: string, kind: string, paths: list<string>}> $rebases */
+    /** @param list<array{source: string, target: string, target_prefix: string, kind: string, paths: list<string>, files: list<string>}> $rebases */
     private function writeRebaseAutoloadFile(string $file, array $rebases): void
     {
         $mappings = [];
+        $autoloadFiles = [];
         foreach ($rebases as $rebase) {
             $mappings[$rebase['target_prefix']] = $rebase['paths'];
+            $autoloadFiles = [...$autoloadFiles, ...$rebase['files']];
         }
+        $autoloadFiles = array_values(array_unique($autoloadFiles));
 
         $contents = "<?php\n\ndeclare(strict_types=1);\n\n";
         $contents .= '$mappings = ' . var_export($mappings, true) . ";\n";
@@ -380,6 +422,14 @@ spl_autoload_register(static function (string $class) use ($mappings): void {
 }, true, true);
 
 PHP;
+
+        foreach ($autoloadFiles as $autoloadFile) {
+            $contents .= "require_once __DIR__ . '/" . $autoloadFile . "';\n";
+        }
+
+        if ($autoloadFiles !== []) {
+            $contents .= "\n";
+        }
 
         foreach ($rebases as $rebase) {
             $source = var_export($rebase['source'], true);

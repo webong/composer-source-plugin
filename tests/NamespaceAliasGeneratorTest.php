@@ -6,6 +6,7 @@ namespace Webong\ComposerSource\Tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Webong\ComposerSource\NamespaceAliasDefinition;
 use Webong\ComposerSource\NamespaceAliasGenerator;
 
 final class NamespaceAliasGeneratorTest extends TestCase
@@ -66,5 +67,87 @@ final class NamespaceAliasGeneratorTest extends TestCase
             $method->invoke($generator, $directory . '/' . $relative, $directory),
             sprintf('Expected %s to be %s.', $relative, $excluded ? 'excluded' : 'retained'),
         );
+    }
+
+    public function testRebaseRequiresRebasedAutoloadFiles(): void
+    {
+        $generator = (new \ReflectionClass(NamespaceAliasGenerator::class))->newInstanceWithoutConstructor();
+        $method = new \ReflectionMethod(NamespaceAliasGenerator::class, 'writeRebaseAutoloadFile');
+        $file = tempnam(sys_get_temp_dir(), 'rebase') . '.php';
+
+        $method->invoke($generator, $file, [
+            [
+                'source' => 'Webong\Fluent\FluentServiceProvider',
+                'target' => 'Zorvia\Fluent\FluentServiceProvider',
+                'target_prefix' => 'Zorvia\\Fluent\\',
+                'kind' => 'class',
+                'paths' => ['rebased/webong--fluent/src'],
+                'files' => ['rebased/webong--fluent/src/helpers.php'],
+            ],
+        ]);
+
+        $contents = (string) file_get_contents($file);
+        unlink($file);
+
+        self::assertStringContainsString("require_once __DIR__ . '/rebased/webong--fluent/src/helpers.php';", $contents);
+        self::assertLessThan(
+            strpos($contents, 'class_alias'),
+            strpos($contents, 'require_once'),
+            'Autoload files must be required before the class aliases are declared.',
+        );
+    }
+
+    public function testRebaseDeduplicatesAutoloadFilesSharedBySeveralRebases(): void
+    {
+        $generator = (new \ReflectionClass(NamespaceAliasGenerator::class))->newInstanceWithoutConstructor();
+        $method = new \ReflectionMethod(NamespaceAliasGenerator::class, 'writeRebaseAutoloadFile');
+        $file = tempnam(sys_get_temp_dir(), 'rebase') . '.php';
+
+        $rebase = static fn (string $source, string $target): array => [
+            'source' => $source,
+            'target' => $target,
+            'target_prefix' => 'Zorvia\\Fluent\\',
+            'kind' => 'class',
+            'paths' => ['rebased/webong--fluent/src'],
+            'files' => ['rebased/webong--fluent/src/helpers.php'],
+        ];
+
+        $method->invoke($generator, $file, [
+            $rebase('Webong\Fluent\A', 'Zorvia\Fluent\A'),
+            $rebase('Webong\Fluent\B', 'Zorvia\Fluent\B'),
+        ]);
+
+        $contents = (string) file_get_contents($file);
+        unlink($file);
+
+        self::assertSame(1, substr_count($contents, 'require_once'));
+    }
+
+    public function testRebaseSkipsAutoloadFilesThatDoNotDeclareTheSourceNamespace(): void
+    {
+        $root = sys_get_temp_dir() . '/rebase-files-' . bin2hex(random_bytes(4));
+        mkdir($root . '/src', 0777, true);
+
+        file_put_contents($root . '/src/namespaced.php', "<?php\n\nnamespace Webong\\Fluent;\n\nfunction namespaced_helper(): void {}\n");
+        file_put_contents($root . '/src/global.php', "<?php\n\nfunction global_helper(): void {}\n");
+
+        $generator = (new \ReflectionClass(NamespaceAliasGenerator::class))->newInstanceWithoutConstructor();
+        $method = new \ReflectionMethod(NamespaceAliasGenerator::class, 'rebasedAutoloadFiles');
+        $definition = new NamespaceAliasDefinition('Webong\\Fluent\\', 'Zorvia\\Fluent\\', NamespaceAliasDefinition::TYPE_REBASE);
+
+        $result = $method->invoke(
+            $generator,
+            ['src/namespaced.php', 'src/global.php', 'src/missing.php', 42, ''],
+            $root,
+            'rebased/webong--fluent',
+            $definition,
+        );
+
+        unlink($root . '/src/namespaced.php');
+        unlink($root . '/src/global.php');
+        rmdir($root . '/src');
+        rmdir($root);
+
+        self::assertSame(['rebased/webong--fluent/src/namespaced.php'], $result);
     }
 }
