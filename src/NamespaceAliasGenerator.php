@@ -234,8 +234,10 @@ final class NamespaceAliasGenerator
     private function isExcludedPath(string $file, string $directory): bool
     {
         $relative = ltrim(str_replace($directory, '', $file), DIRECTORY_SEPARATOR);
+        $separator = preg_quote(DIRECTORY_SEPARATOR, '/');
 
-        return preg_match('/^(?:tests?|vendor|build|dist)(?:'.preg_quote(DIRECTORY_SEPARATOR, '/').'|$)/i', $relative) === 1;
+        return preg_match('/^(?:tests?|vendor|build|dist)(?:'.$separator.'|$)/i', $relative) === 1
+            || preg_match('/(?:'.$separator.'|^)phpstan(?:'.$separator.'|$)/i', $relative) === 1;
     }
 
     /** @return list<array{name: string, kind: string}> */
