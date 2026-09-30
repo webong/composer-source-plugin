@@ -195,7 +195,7 @@ assert_no_file "$CONSUMER/vendor/composer/rebased/acme--fluent/composer.json" "s
 assert_no_file "$CONSUMER/vendor/composer/rebased/acme--fluent/src/Tests/Hidden.php" "nested development subtree excluded"
 assert_missing "$CONSUMER/vendor/composer/namespace_rebases.php" "Hidden" "excluded symbols are not registered"
 if (cd "$CONSUMER" && php -r 'require "vendor/autoload.php"; exit(class_exists("Local\\Fluent\\Thing") ? 0 : 1);'); then pass "lean rebase loads at runtime"; else fail "lean runtime loading"; fi
-assert_eq "$(grep -c 'class_alias.*Thing' "$CONSUMER/vendor/composer/namespace_rebases.php")" "1" "installed dev aliases generate one class alias"
+assert_contains "$CONSUMER/vendor/composer/namespace_rebases.php" "'target' => 'Local\\\\Fluent\\\\Thing'" "installed dev aliases generate one lazy alias mapping"
 
 echo
 echo "================ $PASS passed, $FAIL failed ================"

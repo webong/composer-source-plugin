@@ -550,16 +550,27 @@ final class NamespaceAliasGenerator
     {
         $mappings = [];
         $autoloadFiles = [];
+        $aliases = [];
         foreach ($rebases as $rebase) {
             $mappings[$rebase['target_prefix']] = $rebase['paths'];
             $autoloadFiles = [...$autoloadFiles, ...$rebase['files']];
+            $aliases[$rebase['source']] = [
+                'target' => $rebase['target'],
+                'checker' => match ($rebase['kind']) {
+                    'interface' => 'interface_exists',
+                    'trait' => 'trait_exists',
+                    'enum' => 'enum_exists',
+                    default => 'class_exists',
+                },
+            ];
         }
         $autoloadFiles = array_values(array_unique($autoloadFiles));
 
         $contents = "<?php\n\ndeclare(strict_types=1);\n\n";
         $contents .= '$mappings = ' . var_export($mappings, true) . ";\n";
+        $contents .= '$aliases = ' . var_export($aliases, true) . ";\n";
         $contents .= <<<'PHP'
-spl_autoload_register(static function (string $class) use ($mappings): void {
+spl_autoload_register(static function (string $class) use ($mappings, $aliases): void {
     foreach ($mappings as $prefix => $paths) {
         if (! str_starts_with($class, $prefix)) {
             continue;
@@ -575,28 +586,22 @@ spl_autoload_register(static function (string $class) use ($mappings): void {
             }
         }
     }
+
+    if (! isset($aliases[$class])) {
+        return;
+    }
+
+    $alias = $aliases[$class];
+    $checker = $alias['checker'];
+    if ($checker($alias['target']) && ! $checker($class, false)) {
+        class_alias($alias['target'], $class);
+    }
 }, true, true);
 
 PHP;
 
         foreach ($autoloadFiles as $autoloadFile) {
             $contents .= "require_once __DIR__ . '/" . $autoloadFile . "';\n";
-        }
-
-        if ($autoloadFiles !== []) {
-            $contents .= "\n";
-        }
-
-        foreach ($rebases as $rebase) {
-            $source = var_export($rebase['source'], true);
-            $target = var_export($rebase['target'], true);
-            $checker = match ($rebase['kind']) {
-                'interface' => 'interface_exists',
-                'trait' => 'trait_exists',
-                'enum' => 'enum_exists',
-                default => 'class_exists',
-            };
-            $contents .= "if ({$checker}({$target}) && ! {$checker}({$source}, false)) { class_alias({$target}, {$source}); }\n";
         }
 
         file_put_contents($file, $contents);
