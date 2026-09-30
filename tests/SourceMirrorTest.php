@@ -6,6 +6,7 @@ namespace Webong\ComposerSource\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Webong\ComposerSource\SourceMirror;
+use Webong\ComposerSource\MirrorState;
 use Webong\ComposerSource\NamespaceAliasDefinition;
 
 final class SourceMirrorTest extends TestCase
@@ -41,6 +42,67 @@ final class SourceMirrorTest extends TestCase
         self::assertSame('<?php namespace Acme;', $this->mirrorFile('src/Thing.php'));
         self::assertSame('# upstream', $this->mirrorFile('README.md'));
         self::assertTrue($result->hasChanges());
+    }
+
+    public function testProjectLockMigratesTheBaselineAndPreservesLocalEditsAcrossUpstreamChanges(): void
+    {
+        $this->upstream('src/Thing.php', 'base');
+        $this->mirrorSync('first');
+        file_put_contents($this->mirror . '/src/Thing.php', 'local');
+        $lock = $this->root . '/composer-source.lock';
+        $sync = new SourceMirror($this->source, $this->mirror, 'acme/fluent', stateFile: $lock);
+        $sync->sync('first');
+        self::assertFileDoesNotExist(MirrorState::pathFor($this->mirror));
+        self::assertSame(hash('sha256', 'base'), MirrorState::readLock($lock)['mirrors']['acme/fluent']['files']['src/Thing.php']);
+        $this->upstream('src/Thing.php', 'upstream changed');
+        $result = $sync->sync('second');
+        self::assertSame(['src/Thing.php'], $result->conflicts);
+        self::assertSame('local', $this->mirrorFile('src/Thing.php'));
+        self::assertSame('upstream changed', $this->mirrorFile('src/Thing.php.upstream'));
+    }
+
+    public function testReadOnlyProjectLockPreservesLocalDeletionsWithoutChangingState(): void
+    {
+        $this->upstream('src/Thing.php', 'base');
+        $lock = $this->root . '/composer-source.lock';
+        (new SourceMirror($this->source, $this->mirror, 'acme/fluent', stateFile: $lock))->sync('first');
+        $before = file_get_contents($lock);
+        unlink($this->mirror . '/src/Thing.php');
+        // A missing local tracked file is a local deletion and must stay deleted.
+        (new SourceMirror($this->source, $this->mirror, 'acme/fluent', stateFile: $lock, writeState: false))->sync('first');
+        self::assertFileDoesNotExist($this->mirror . '/src/Thing.php');
+        self::assertSame($before, file_get_contents($lock));
+        self::assertFileDoesNotExist(MirrorState::pathFor($this->mirror));
+    }
+
+    public function testInvalidProjectLockDoesNotModifyTheMirrorOrLegacyBaseline(): void
+    {
+        $this->upstream('src/Thing.php', 'base');
+        $this->mirrorSync();
+        $this->upstream('src/Thing.php', 'changed');
+        $lock = $this->root . '/composer-source.lock';
+        file_put_contents($lock, '{broken');
+        try {
+            (new SourceMirror($this->source, $this->mirror, 'acme/fluent', stateFile: $lock))->sync();
+            self::fail('Invalid lock must stop syncing.');
+        } catch (\RuntimeException $exception) {
+            self::assertStringContainsString('Invalid', $exception->getMessage());
+        }
+        self::assertSame('base', $this->mirrorFile('src/Thing.php'));
+        self::assertFileExists(MirrorState::pathFor($this->mirror));
+        self::assertSame('{broken', file_get_contents($lock));
+    }
+
+    public function testProjectLockKeepsOtherPackagesAndRejectsMappingChanges(): void
+    {
+        $lock = $this->root . '/composer-source.lock';
+        MirrorState::save($this->mirror, 'other/package', 'other', [], $lock);
+        $this->upstream('src/Thing.php', 'base');
+        (new SourceMirror($this->source, $this->mirror, 'acme/fluent', stateFile: $lock))->sync('first');
+        self::assertSame('other', MirrorState::readLock($lock)['mirrors']['other/package']['reference']);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('namespace mapping differs');
+        (new SourceMirror($this->source, $this->mirror, 'acme/fluent', [new NamespaceAliasDefinition('Acme\\', 'Local\\')], $lock))->sync('second');
     }
 
     public function testItCreatesTheMirrorRootWhenMissing(): void

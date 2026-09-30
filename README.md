@@ -156,7 +156,43 @@ per package.
 
 ### How local edits are protected
 
-Merging is file-level, not line-level. The plugin records what the mirror
+To keep sync metadata outside working copies, opt into a project lock:
+
+```json
+{
+    "extra": {
+        "source-plugin": {
+            "mirror-state": "lock",
+            "mirrors": {
+                "webong/cogent": { "path": "ext/cogent" }
+            }
+        }
+    }
+}
+```
+
+Run `composer update` with autoload generation enabled. The plugin writes
+`composer-source.lock` beside `composer.json`, containing each package's
+upstream reference, baseline hashes, and namespace mapping. Commit this file
+alongside `composer.lock` and the mirrored sources. Existing
+`.source-plugin/sync.json` files are read during migration and removed only
+after the project lock has been saved successfully. Other files inside
+`.source-plugin/` are retained.
+
+In this mode, `install` and `dump-autoload` use the recorded baseline without
+changing the project lock. If the installed reference does not match it, sync
+is skipped with a warning to run `composer update`. Resolution-only updates
+(`--no-install`), dry runs and updates with plugins disabled cannot erase this
+file. A namespace mapping change against an existing project baseline is
+rejected; it requires an explicit working-copy migration.
+
+Composer rebuilds `composer.lock` from dependency data and does not preserve
+arbitrary custom fields. The companion file avoids losing merge history on
+those rewrites. A custom `COMPOSER=other.json` uses `other-source.lock` beside
+that manifest. The default `mirror-state: "local"` retains existing behavior;
+after migrating, keep `lock` enabled (switching back does not export the state).
+
+Merging is file-level, not line-level. In the default local mode, the plugin records what the mirror
 looked like when it was last synced in `ext/fluent/.source-plugin/sync.json`,
 committed alongside your working copy so the baseline is reproducible across
 machines. Commit it.
