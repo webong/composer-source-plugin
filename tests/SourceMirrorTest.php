@@ -222,6 +222,20 @@ final class SourceMirrorTest extends TestCase
         self::assertSame([], $second->conflicts);
     }
 
+    public function testItRebasesLocalEditsWhenMigratingAnExistingMirror(): void
+    {
+        $this->upstream('src/Thing.php', '<?php namespace Webong\\Cogent; class Thing { const VALUE = "upstream"; }');
+        $this->mirrorSync();
+        file_put_contents($this->mirror . '/src/Thing.php', '<?php namespace Webong\\Cogent; class Thing { const VALUE = "local"; }');
+
+        $this->mirrorSync(rebases: [new NamespaceAliasDefinition(
+            'Webong\\Cogent\\', 'Zorvia\\Cogent\\', NamespaceAliasDefinition::TYPE_REBASE, 'webong/cogent', destination: NamespaceAliasDefinition::DESTINATION_MIRROR,
+        )]);
+
+        self::assertStringContainsString('namespace Zorvia\\Cogent', $this->mirrorFile('src/Thing.php'));
+        self::assertStringContainsString('"local"', $this->mirrorFile('src/Thing.php'));
+    }
+
     public function testUnbasedLocalContentSurvivesRepeatedSyncsAndUpstreamChanges(): void
     {
         mkdir($this->mirror . '/src', 0777, true);
