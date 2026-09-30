@@ -6,6 +6,7 @@ namespace Webong\ComposerSource\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Webong\ComposerSource\SourceMirror;
+use Webong\ComposerSource\NamespaceAliasDefinition;
 
 final class SourceMirrorTest extends TestCase
 {
@@ -197,6 +198,30 @@ final class SourceMirrorTest extends TestCase
         self::assertSame('acme/fluent', $state['package']);
     }
 
+    public function testItRebasesAnExistingMirrorWithoutTreatingTheRewriteAsAConflict(): void
+    {
+        $this->upstream('src/Thing.php', '<?php namespace Webong\\Cogent; class Thing {}');
+        $this->mirrorSync();
+
+        $result = $this->mirrorSync(rebases: [new NamespaceAliasDefinition(
+            'Webong\\Cogent\\',
+            'Zorvia\\Cogent\\',
+            NamespaceAliasDefinition::TYPE_REBASE,
+            'webong/cogent',
+            destination: NamespaceAliasDefinition::DESTINATION_MIRROR,
+        )]);
+
+        self::assertSame(['src/Thing.php'], $result->written);
+        self::assertSame([], $result->conflicts);
+        self::assertStringContainsString('namespace Zorvia\\Cogent', $this->mirrorFile('src/Thing.php'));
+
+        $second = $this->mirrorSync(rebases: [new NamespaceAliasDefinition(
+            'Webong\\Cogent\\', 'Zorvia\\Cogent\\', NamespaceAliasDefinition::TYPE_REBASE, 'webong/cogent', destination: NamespaceAliasDefinition::DESTINATION_MIRROR,
+        )]);
+        self::assertSame([], $second->written);
+        self::assertSame([], $second->conflicts);
+    }
+
     public function testUnbasedLocalContentSurvivesRepeatedSyncsAndUpstreamChanges(): void
     {
         mkdir($this->mirror . '/src', 0777, true);
@@ -229,9 +254,9 @@ final class SourceMirrorTest extends TestCase
         return (string) file_get_contents($this->mirror . '/' . $relative);
     }
 
-    private function mirrorSync(?string $reference = null): \Webong\ComposerSource\MirrorResult
+    private function mirrorSync(?string $reference = null, array $rebases = []): \Webong\ComposerSource\MirrorResult
     {
-        return (new SourceMirror($this->source, $this->mirror, 'acme/fluent'))->sync($reference);
+        return (new SourceMirror($this->source, $this->mirror, 'acme/fluent', $rebases))->sync($reference);
     }
 
     private function remove(string $path): void

@@ -10,6 +10,10 @@ final class NamespaceAliasDefinition
 
     public const TYPE_REBASE = 'rebase';
 
+    public const DESTINATION_GENERATED = 'generated';
+
+    public const DESTINATION_MIRROR = 'mirror';
+
     public function __construct(
         public readonly string $sourcePrefix,
         public readonly string $targetPrefix,
@@ -18,6 +22,7 @@ final class NamespaceAliasDefinition
         public readonly string $copy = 'package',
         public readonly array $include = [],
         public readonly array $exclude = [],
+        public readonly string $destination = self::DESTINATION_GENERATED,
     ) {
     }
 

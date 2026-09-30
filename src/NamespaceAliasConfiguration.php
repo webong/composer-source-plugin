@@ -49,12 +49,16 @@ final class NamespaceAliasConfiguration
             }
             $include = self::paths($value['include'] ?? []);
             $exclude = self::paths($value['exclude'] ?? []);
+            $destination = $value['destination'] ?? NamespaceAliasDefinition::DESTINATION_GENERATED;
+            if (! in_array($destination, [NamespaceAliasDefinition::DESTINATION_GENERATED, NamespaceAliasDefinition::DESTINATION_MIRROR], true)) {
+                throw new InvalidArgumentException('Rebase destination must be generated or mirror.');
+            }
             if ($type !== NamespaceAliasDefinition::TYPE_REBASE && ($copy !== 'package' || $include !== [] || $exclude !== [])) {
                 throw new InvalidArgumentException('Copy options require a rebase alias.');
             }
             $hasNamespace = false;
             foreach ($value as $sourcePrefix => $targetPrefix) {
-                if (in_array($sourcePrefix, ['type', 'copy', 'include', 'exclude'], true)) {
+                if (in_array($sourcePrefix, ['type', 'copy', 'include', 'exclude', 'destination'], true)) {
                     continue;
                 }
 
@@ -75,6 +79,7 @@ final class NamespaceAliasConfiguration
                     copy: $copy,
                     include: $include,
                     exclude: $exclude,
+                    destination: $destination,
                 );
                 $hasNamespace = true;
             }
@@ -100,6 +105,7 @@ final class NamespaceAliasConfiguration
         string $copy = 'package',
         array $include = [],
         array $exclude = [],
+        string $destination = NamespaceAliasDefinition::DESTINATION_GENERATED,
     ): NamespaceAliasDefinition {
         if ($sourcePrefix === '' || $targetPrefix === '') {
             throw new InvalidArgumentException('Namespace alias prefixes cannot be empty.');
@@ -114,7 +120,7 @@ final class NamespaceAliasConfiguration
 
         $configuredPrefixes[$sourcePrefix] = true;
 
-        return new NamespaceAliasDefinition($sourcePrefix, $targetPrefix, $type, $package, $copy, $include, $exclude);
+        return new NamespaceAliasDefinition($sourcePrefix, $targetPrefix, $type, $package, $copy, $include, $exclude, $destination);
     }
 
     private static function paths(mixed $paths): array

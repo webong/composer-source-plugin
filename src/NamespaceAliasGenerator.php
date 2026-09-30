@@ -128,14 +128,24 @@ final class NamespaceAliasGenerator
                 continue;
             }
 
-            foreach ($this->discoverSymbols($installPath, $rebased['selected'], $definition->exclude) as $symbol) {
-                if (! str_starts_with($symbol['name'], $definition->sourcePrefix)) {
+            $symbolPrefix = $definition->sourcePrefix;
+            $symbolRoot = $installPath;
+            if ($definition->destination === NamespaceAliasDefinition::DESTINATION_MIRROR) {
+                $installedPath = $this->composer->getInstallationManager()->getInstallPath($package);
+                if (is_string($installedPath) && is_dir($installedPath)) {
+                    $symbolRoot = $installedPath;
+                }
+            }
+            foreach ($this->discoverSymbols($symbolRoot, $rebased['selected'], $definition->exclude) as $symbol) {
+                if (! str_starts_with($symbol['name'], $symbolPrefix)) {
                     continue;
                 }
 
+                $suffix = substr($symbol['name'], strlen($symbolPrefix));
+
                 $rebases[] = [
-                    'source' => $symbol['name'],
-                    'target' => $definition->targetPrefix . substr($symbol['name'], strlen($definition->sourcePrefix)),
+                    'source' => $definition->sourcePrefix . $suffix,
+                    'target' => $definition->targetPrefix . $suffix,
                     'target_prefix' => $definition->targetPrefix,
                     'kind' => $symbol['kind'],
                     'paths' => $rebased['paths'],
@@ -296,7 +306,10 @@ final class NamespaceAliasGenerator
             }
 
             $contents = @file_get_contents($installPath . '/' . ltrim($file, '/'));
-            if ($contents === false || ! str_contains($contents, rtrim($definition->sourcePrefix, '\\'))) {
+            $namespace = $definition->destination === NamespaceAliasDefinition::DESTINATION_MIRROR
+                ? $definition->targetPrefix
+                : $definition->sourcePrefix;
+            if ($contents === false || ! str_contains($contents, rtrim($namespace, '\\'))) {
                 continue;
             }
 

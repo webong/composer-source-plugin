@@ -217,6 +217,28 @@ the source roots must be explicitly included. Filenames and directory names
 alone cannot determine whether a file is used at runtime. The generated layout
 remains `vendor/composer/rebased/<vendor>--<package>/<original-path>`.
 
+### Rebase the mirror itself
+
+By default a rebase leaves the mirror upstream-shaped and writes its rebased
+copy under `vendor/composer/rebased/`. To make the working copy itself use the
+target namespace, opt into the explicit `mirror` destination:
+
+```json
+{
+    "webong/cogent": {
+        "Webong\\Cogent\\": "Zorvia\\Cogent\\",
+        "type": "rebase",
+        "destination": "mirror"
+    }
+}
+```
+
+The source mirror still synchronizes from the installed `webong/cogent`
+package. During sync the plugin transforms PHP source into the target namespace
+before writing it to the mirror and records the transformed content as its
+baseline. Local edits remain protected and upstream conflicts retain the same
+file-level behavior. Composer's package name is unchanged.
+
 ### Supported runtimes and verification
 
 The plugin supports PHP 8.1 and later and Composer plugin API 2.3 and later.
