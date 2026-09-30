@@ -24,6 +24,17 @@ final class NamespaceAliasConfigurationTest extends TestCase
         self::assertNull($definitions[0]->package);
     }
 
+    public function testItParsesAMirrorRebaseDestination(): void
+    {
+        $definitions = NamespaceAliasConfiguration::parse(['webong/cogent' => [
+            'Webong\\Cogent\\' => 'Zorvia\\Cogent\\',
+            'type' => 'rebase',
+            'destination' => 'mirror',
+        ]]);
+
+        self::assertSame('mirror', $definitions[0]->destination);
+    }
+
     public function testItParsesPackageScopedAliasesAsSimpleByDefault(): void
     {
         $definitions = NamespaceAliasConfiguration::parse([

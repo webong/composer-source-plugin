@@ -33,6 +33,8 @@ final class SourceMirror
         private readonly string $sourceRoot,
         private readonly string $mirrorRoot,
         private readonly string $package,
+        /** @var list<NamespaceAliasDefinition> */
+        private readonly array $rebases = [],
     ) {
     }
 
@@ -95,9 +97,11 @@ final class SourceMirror
                 continue;
             }
 
-            if ($localHash === $upstreamHash) {
+            $desiredHash = $upstreamHash === null ? null : $this->desiredHash($path);
+
+            if ($localHash === $desiredHash) {
                 $unchanged[] = $path;
-                $nextBase[$path] = $upstreamHash;
+                $nextBase[$path] = $desiredHash;
 
                 continue;
             }
@@ -106,7 +110,7 @@ final class SourceMirror
                 if ($localHash === null) {
                     $this->writeLocal($path, $this->sourceRoot . '/' . $path);
                     $written[] = $path;
-                    $nextBase[$path] = $upstreamHash;
+                    $nextBase[$path] = $desiredHash;
 
                     continue;
                 }
@@ -115,17 +119,31 @@ final class SourceMirror
                 // the next sync mistakes local work for an untouched upstream
                 // file and overwrites it, even when upstream has not changed.
                 $preserved[] = $path;
-                $nextBase[$path] = $upstreamHash;
+                $nextBase[$path] = $desiredHash;
                 $unbased[] = $path;
 
                 continue;
             }
 
-            if ($upstreamHash === $baseHash) {
+            // A mirror can be switched from upstream namespaces to rebased
+            // namespaces without mistaking that mechanical rewrite for an
+            // upstream change. Subsequent syncs use the rebased hash as base.
+            if ($upstreamHash === $baseHash && $desiredHash !== $upstreamHash) {
+                if ($localHash === $baseHash) {
+                    $this->writeLocal($path, $this->sourceRoot . '/' . $path);
+                    $written[] = $path;
+                } else {
+                    $preserved[] = $path;
+                }
+                $nextBase[$path] = $desiredHash;
+                continue;
+            }
+
+            if ($desiredHash === $baseHash) {
                 // Upstream has not touched this file since the last sync, so
                 // the difference is ours. Keep it.
                 $preserved[] = $path;
-                $nextBase[$path] = $upstreamHash;
+                $nextBase[$path] = $desiredHash;
 
                 continue;
             }
@@ -133,7 +151,7 @@ final class SourceMirror
             if ($localHash === $baseHash) {
                 $this->writeLocal($path, $this->sourceRoot . '/' . $path);
                 $written[] = $path;
-                $nextBase[$path] = $upstreamHash;
+                $nextBase[$path] = $desiredHash;
 
                 continue;
             }
@@ -237,9 +255,32 @@ final class SourceMirror
             throw new RuntimeException('Unable to create mirror directory: ' . $directory);
         }
 
-        if (! copy($from, $target)) {
+        $contents = file_get_contents($from);
+        if ($contents === false) {
+            throw new RuntimeException('Unable to read mirrored source file: ' . $from);
+        }
+        if (pathinfo($from, PATHINFO_EXTENSION) === 'php') {
+            foreach ($this->rebases as $rebase) {
+                $contents = (new NamespaceRebaser)->rebase($contents, $rebase);
+            }
+        }
+        if (file_put_contents($target, $contents) === false) {
             throw new RuntimeException('Unable to write mirrored file: ' . $target);
         }
+    }
+
+    private function desiredHash(string $relative): string
+    {
+        $contents = file_get_contents($this->sourceRoot . '/' . $relative);
+        if ($contents === false) {
+            throw new RuntimeException('Unable to read mirrored source file: ' . $relative);
+        }
+        if (pathinfo($relative, PATHINFO_EXTENSION) === 'php') {
+            foreach ($this->rebases as $rebase) {
+                $contents = (new NamespaceRebaser)->rebase($contents, $rebase);
+            }
+        }
+        return hash('sha256', $contents);
     }
 
     private function writeSidecar(string $relative, string $from): void

@@ -71,6 +71,7 @@ final class PackageMirrorSynchroniser
                 sourceRoot: $installPath,
                 mirrorRoot: $mirrorRoot,
                 package: $definition->package,
+                rebases: $this->mirrorRebases($definition->package),
             ))->sync($this->reference($package));
         } catch (Throwable $exception) {
             // A mirror problem must never abort the install.
@@ -85,6 +86,17 @@ final class PackageMirrorSynchroniser
         }
 
         $this->report($definition, $result);
+    }
+
+    /** @return list<NamespaceAliasDefinition> */
+    private function mirrorRebases(string $package): array
+    {
+        return array_values(array_filter(
+            NamespaceAliasConfiguration::parse(SourcePluginConfig::aliases($this->composer)),
+            static fn (NamespaceAliasDefinition $definition): bool => $definition->package === $package
+                && $definition->type === NamespaceAliasDefinition::TYPE_REBASE
+                && $definition->destination === NamespaceAliasDefinition::DESTINATION_MIRROR,
+        ));
     }
 
     private function report(MirrorDefinition $definition, MirrorResult $result): void

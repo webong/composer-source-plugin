@@ -72,7 +72,7 @@ cat > "$CONSUMER/composer.json" <<JSON
   "extra": {
     "source-plugin": {
       "mirrors": { "acme/fluent": { "path": "ext/fluent", "origin": "remote" } },
-      "aliases": { "acme/fluent": { "Acme\\\\Fluent\\\\": "Local\\\\Fluent\\\\", "type": "rebase" } }
+      "aliases": { "acme/fluent": { "Acme\\\\Fluent\\\\": "Local\\\\Fluent\\\\", "type": "rebase", "destination": "mirror" } }
     }
   },
   "config": { "allow-plugins": { "webong/composer-source-plugin": true } }
@@ -88,7 +88,7 @@ assert_file "$MIRROR/src/Thing.php"        "mirror contains src/Thing.php"
 assert_file "$MIRROR/composer.json"        "mirror contains composer.json"
 assert_file "$MIRROR/.source-plugin/sync.json" "snapshot written"
 assert_dir  "$CONSUMER/vendor/acme/fluent" "remote still installed in vendor"
-assert_contains "$MIRROR/src/Thing.php" "upstream-v1" "mirrored content is upstream v1"
+assert_contains "$MIRROR/src/Thing.php" "namespace Local\\Fluent" "mirror itself is rebased"
 
 section "2. no path repository is required"
 grep -q '"url": "ext/fluent"' "$CONSUMER/composer.json" && fail "consumer should not declare a path repo for the mirror" || pass "consumer declares no path repo for ext/fluent"
