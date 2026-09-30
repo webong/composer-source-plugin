@@ -569,12 +569,6 @@ final class NamespaceAliasGenerator
         $contents = "<?php\n\ndeclare(strict_types=1);\n\n";
         $contents .= '$mappings = ' . var_export($mappings, true) . ";\n";
         $contents .= '$aliases = ' . var_export($aliases, true) . ";\n";
-        foreach ($autoloadFiles as $autoloadFile) {
-            $contents .= "require_once __DIR__ . '/" . $autoloadFile . "';\n";
-        }
-        if ($autoloadFiles !== []) {
-            $contents .= "\n";
-        }
         $contents .= <<<'PHP'
 spl_autoload_register(static function (string $class) use ($mappings, $aliases): void {
     foreach ($mappings as $prefix => $paths) {
@@ -605,6 +599,10 @@ spl_autoload_register(static function (string $class) use ($mappings, $aliases):
 }, true, true);
 
 PHP;
+
+        foreach ($autoloadFiles as $autoloadFile) {
+            $contents .= "require_once __DIR__ . '/" . $autoloadFile . "';\n";
+        }
 
         file_put_contents($file, $contents);
     }

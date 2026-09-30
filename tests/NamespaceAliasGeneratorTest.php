@@ -139,10 +139,45 @@ final class NamespaceAliasGeneratorTest extends TestCase
 
         self::assertStringContainsString("require_once __DIR__ . '/rebased/webong--fluent/src/helpers.php';", $contents);
         self::assertLessThan(
-            strpos($contents, 'class_alias'),
             strpos($contents, 'require_once'),
-            'Autoload files must be required before the class aliases are declared.',
+            strpos($contents, 'spl_autoload_register'),
+            'Register the lazy loader before helpers can request rebased classes.',
         );
+    }
+
+    public function testRebaseBootstrapDefersClassesUntilTheirDependenciesAreAvailable(): void
+    {
+        $root = sys_get_temp_dir() . '/lazy-rebase-' . bin2hex(random_bytes(6));
+        mkdir($root);
+        $before = spl_autoload_functions();
+        $generator = (new \ReflectionClass(NamespaceAliasGenerator::class))->newInstanceWithoutConstructor();
+        $method = new \ReflectionMethod(NamespaceAliasGenerator::class, 'writeRebaseAutoloadFile');
+        file_put_contents($root . '/Provider.php', '<?php namespace LazyRebaseTarget; class Provider extends \\LazyRebaseDependency\\Base {}');
+        $method->invoke($generator, $root . '/loader.php', [[
+            'source' => 'LazyRebaseSource\\Provider',
+            'target' => 'LazyRebaseTarget\\Provider',
+            'target_prefix' => 'LazyRebaseTarget\\',
+            'kind' => 'class',
+            'paths' => ['.'],
+            'files' => [],
+        ]]);
+
+        try {
+            require $root . '/loader.php';
+            self::assertFalse(class_exists('LazyRebaseTarget\\Provider', false));
+            eval('namespace LazyRebaseDependency; class Base {}');
+            self::assertTrue(class_exists('LazyRebaseSource\\Provider'));
+            self::assertSame('LazyRebaseTarget\\Provider', (new \ReflectionClass('LazyRebaseSource\\Provider'))->getName());
+        } finally {
+            foreach (spl_autoload_functions() as $loader) {
+                if (! in_array($loader, $before, true)) {
+                    spl_autoload_unregister($loader);
+                }
+            }
+            unlink($root . '/Provider.php');
+            unlink($root . '/loader.php');
+            rmdir($root);
+        }
     }
 
     public function testRebaseDeduplicatesAutoloadFilesSharedBySeveralRebases(): void
