@@ -133,6 +133,11 @@ final class SourceMirror
                     $this->writeLocal($path, $this->sourceRoot . '/' . $path);
                     $written[] = $path;
                 } else {
+                    // Keep developer changes, but apply the same mechanical
+                    // namespace transformation to them so a mirror-rebase
+                    // migration cannot leave mixed namespaces behind.
+                    $this->rebaseLocal($path);
+                    $written[] = $path;
                     $preserved[] = $path;
                 }
                 $nextBase[$path] = $desiredHash;
@@ -281,6 +286,24 @@ final class SourceMirror
             }
         }
         return hash('sha256', $contents);
+    }
+
+    private function rebaseLocal(string $relative): void
+    {
+        $target = $this->mirrorRoot . '/' . $relative;
+        if (pathinfo($target, PATHINFO_EXTENSION) !== 'php') {
+            return;
+        }
+        $contents = file_get_contents($target);
+        if ($contents === false) {
+            throw new RuntimeException('Unable to read local mirror file: ' . $target);
+        }
+        foreach ($this->rebases as $rebase) {
+            $contents = (new NamespaceRebaser)->rebase($contents, $rebase);
+        }
+        if (file_put_contents($target, $contents) === false) {
+            throw new RuntimeException('Unable to rebase local mirror file: ' . $target);
+        }
     }
 
     private function writeSidecar(string $relative, string $from): void
