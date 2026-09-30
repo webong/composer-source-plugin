@@ -4,17 +4,20 @@ declare(strict_types=1);
 
 namespace Webong\ComposerSource;
 
-final readonly class NamespaceAliasDefinition
+final class NamespaceAliasDefinition
 {
     public const TYPE_SIMPLE = 'simple';
 
     public const TYPE_REBASE = 'rebase';
 
     public function __construct(
-        public string $sourcePrefix,
-        public string $targetPrefix,
-        public string $type = self::TYPE_SIMPLE,
-        public ?string $package = null,
+        public readonly string $sourcePrefix,
+        public readonly string $targetPrefix,
+        public readonly string $type = self::TYPE_SIMPLE,
+        public readonly ?string $package = null,
+        public readonly string $copy = 'package',
+        public readonly array $include = [],
+        public readonly array $exclude = [],
     ) {
     }
 

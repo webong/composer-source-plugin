@@ -11,6 +11,38 @@ use Webong\ComposerSource\NamespaceAliasGenerator;
 
 final class NamespaceAliasGeneratorTest extends TestCase
 {
+    public function testAutoloadCopyKeepsLayoutAndExplicitResourcesWithoutDevelopmentFiles(): void
+    {
+        $root = sys_get_temp_dir() . '/rebase-selection-' . bin2hex(random_bytes(6));
+        foreach (['src/Tests', 'resources', '.github'] as $directory) {
+            mkdir($root . '/source/' . $directory, 0777, true);
+        }
+        foreach (['src/Thing.php', 'src/Tests/Test.php', 'resources/view.php', 'composer.json', '.github/ci.yml'] as $file) {
+            file_put_contents($root . '/source/' . $file, '<?php namespace Acme;');
+        }
+        $generator = (new \ReflectionClass(NamespaceAliasGenerator::class))->newInstanceWithoutConstructor();
+        $method = new \ReflectionMethod(NamespaceAliasGenerator::class, 'rebasePackageFiles');
+        try {
+            $method->invoke($generator, $root . '/source', $root . '/target', new NamespaceAliasDefinition('Acme\\', 'Local\\', 'rebase'));
+            self::assertFileExists($root . '/target/composer.json');
+            $method->invoke($generator, $root . '/source', $root . '/target',
+                new NamespaceAliasDefinition('Acme\\', 'Local\\', 'rebase'),
+                ['src', 'resources'], ['src/Tests']);
+            self::assertFileExists($root . '/target/src/Thing.php');
+            self::assertFileExists($root . '/target/resources/view.php');
+            self::assertFileDoesNotExist($root . '/target/composer.json');
+            self::assertFileDoesNotExist($root . '/target/.github/ci.yml');
+            self::assertFileDoesNotExist($root . '/target/src/Tests/Test.php');
+            self::assertStringContainsString('namespace Local', file_get_contents($root . '/target/src/Thing.php'));
+        } finally {
+            $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+            foreach ($files as $file) {
+                $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
+            }
+            rmdir($root);
+        }
+    }
+
     public function testPackageMetadataUsesTheExpectedNamespaceAliasShape(): void
     {
         $composer = json_decode((string) file_get_contents(__DIR__ . '/../composer.json'), true, flags: JSON_THROW_ON_ERROR);
@@ -22,12 +54,28 @@ final class NamespaceAliasGeneratorTest extends TestCase
         );
     }
 
-    public function testGeneratedAliasesAreRegisteredForOptimizedComposerAutoloading(): void
+    public function testGeneratedAliasesAreLoadedThroughThePluginFilesAutoloadEntry(): void
     {
-        $generator = (string) file_get_contents(__DIR__ . '/../src/NamespaceAliasGenerator.php');
+        $composer = json_decode((string) file_get_contents(__DIR__ . '/../composer.json'), true, flags: JSON_THROW_ON_ERROR);
 
-        self::assertStringContainsString('registerStaticAutoloadFile', $generator);
-        self::assertStringContainsString("'/autoload_static.php'", $generator);
+        // Composer omits the files-loading section of the generated autoloader
+        // unless some package declares a "files" autoload entry, so the plugin
+        // must declare its own or the generated files are never loaded.
+        self::assertSame(['src/bootstrap.php'], $composer['autoload']['files']);
+
+        $bootstrap = (string) file_get_contents(__DIR__ . '/../src/bootstrap.php');
+        self::assertStringContainsString('namespace_aliases.php', $bootstrap);
+        self::assertStringContainsString('namespace_rebases.php', $bootstrap);
+    }
+
+    public function testTheBootstrapFindsTheComposerDirectoryFromAnyInstallDepth(): void
+    {
+        $bootstrap = (string) file_get_contents(__DIR__ . '/../src/bootstrap.php');
+
+        // It must not assume a fixed vendor/<vendor>/<package>/src depth, or it
+        // breaks for path repositories and non-standard vendor dirs.
+        self::assertStringContainsString('dirname(', $bootstrap);
+        self::assertStringNotContainsString("dirname(__DIR__, 3)", $bootstrap);
     }
 
     public function testRebasedAutoloadPathsAreResolvedRelativeToTheGeneratedFile(): void

@@ -6,6 +6,7 @@
     <testsuites>
         <testsuite name="Composer Namespace Alias">
             <directory>tests</directory>
+            <exclude>tests/integration</exclude>
         </testsuite>
     </testsuites>
 </phpunit>

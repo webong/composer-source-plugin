@@ -1,0 +1,6 @@
+.git
+vendor
+composer.lock
+tests/integration/consumer
+tests/integration/upstream
+tests/integration/.composer

@@ -13,13 +13,12 @@ use RuntimeException;
 
 final class NamespaceAliasGenerator
 {
-    private const EXTRA_KEY = 'source-plugin';
-    private const ALIASES_KEY = 'aliases';
     private const AUTOLOAD_FILE = 'namespace_aliases.php';
     private const REBASE_AUTOLOAD_FILE = 'namespace_rebases.php';
     private const CONTAINER_ALIASES_FILE = 'source_aliases.php';
-    private const AUTOLOAD_FILES_MARKER = 'webong/composer-source-plugin';
-    private const REBASE_AUTOLOAD_FILES_MARKER = 'webong/composer-source-plugin-rebases';
+
+    /** @var array<string, true> */
+    private array $preparedRoots = [];
 
     public function __construct(
         private readonly Composer $composer,
@@ -29,8 +28,8 @@ final class NamespaceAliasGenerator
 
     public function generate(): void
     {
+        $this->preparedRoots = [];
         $vendorDirectory = $this->composer->getConfig()->get('vendor-dir');
-        $autoloadFiles = $vendorDirectory . '/composer/autoload_files.php';
         $generatedFile = $vendorDirectory . '/composer/' . self::AUTOLOAD_FILE;
         $rebaseGeneratedFile = $vendorDirectory . '/composer/' . self::REBASE_AUTOLOAD_FILE;
         $containerAliasesFile = $vendorDirectory . '/composer/' . self::CONTAINER_ALIASES_FILE;
@@ -39,7 +38,7 @@ final class NamespaceAliasGenerator
 
         $configured = $this->configuredAliases();
 
-        foreach ($this->composer->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
+        foreach ($this->localPackages() as $package) {
             $aliases = array_merge($aliases, $this->aliasesForPackage($package, $configured));
             $rebases = array_merge($rebases, $this->rebasesForPackage($package, $configured, $vendorDirectory));
         }
@@ -47,8 +46,11 @@ final class NamespaceAliasGenerator
         $this->writeAliasFile($generatedFile, $aliases);
         $this->writeRebaseAutoloadFile($rebaseGeneratedFile, $rebases);
         $this->writeContainerAliasesFile($containerAliasesFile, $aliases);
-        $this->registerAutoloadFile($autoloadFiles, self::AUTOLOAD_FILES_MARKER, self::AUTOLOAD_FILE, $aliases !== []);
-        $this->registerAutoloadFile($autoloadFiles, self::REBASE_AUTOLOAD_FILES_MARKER, self::REBASE_AUTOLOAD_FILE, $rebases !== []);
+
+        // The generated files are loaded by src/bootstrap.php, which is
+        // registered as this package's own "files" autoload entry. Patching
+        // the generated autoloader is not viable: Composer omits the
+        // files-loading section entirely when no package declares one.
 
         if ($aliases !== []) {
             $this->io->writeError(sprintf('<info>Generated %d namespace aliases.</info>', count($aliases)));
@@ -101,10 +103,7 @@ final class NamespaceAliasGenerator
     /** @return list<NamespaceAliasDefinition> */
     private function configuredAliases(): array
     {
-        $extra = $this->composer->getPackage()->getExtra()[self::EXTRA_KEY] ?? [];
-        $aliases = is_array($extra) ? ($extra[self::ALIASES_KEY] ?? []) : [];
-
-        return is_array($aliases) ? NamespaceAliasConfiguration::parse($aliases) : [];
+        return NamespaceAliasConfiguration::parse(SourcePluginConfig::aliases($this->composer));
     }
 
     /**
@@ -113,8 +112,8 @@ final class NamespaceAliasGenerator
      */
     private function rebasesForPackage(PackageInterface $package, array $configured, string $vendorDirectory): array
     {
-        $installPath = $this->composer->getInstallationManager()->getInstallPath($package);
-        if (! is_string($installPath) || ! is_dir($installPath)) {
+        $installPath = $this->sourceRoot($package);
+        if ($installPath === null) {
             return [];
         }
 
@@ -129,7 +128,7 @@ final class NamespaceAliasGenerator
                 continue;
             }
 
-            foreach ($this->discoverSymbols($installPath) as $symbol) {
+            foreach ($this->discoverSymbols($installPath, $rebased['selected'], $definition->exclude) as $symbol) {
                 if (! str_starts_with($symbol['name'], $definition->sourcePrefix)) {
                     continue;
                 }
@@ -149,7 +148,91 @@ final class NamespaceAliasGenerator
     }
 
     /**
-     * @return array{paths: list<string>, files: list<string>}
+     * Composer can hold more than one representation of the same installed
+     * package (a resolved version plus an unresolved dev alias), all pointing
+     * at the same directory. Processing one per install path keeps the
+     * generated aliases free of duplicates and avoids walking the same tree
+     * twice.
+     *
+     * @return list<PackageInterface>
+     */
+    private function localPackages(): array
+    {
+        $installationManager = $this->composer->getInstallationManager();
+        $packages = [];
+        $seen = [];
+
+        foreach ($this->composer->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
+            $installPath = $installationManager->getInstallPath($package);
+            $key = (is_string($installPath) ? $installPath : $package->getName()) . '|' . $package->getName();
+
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $packages[] = $package;
+        }
+
+        return $packages;
+    }
+
+    /**
+     * Where a package's rebaseable source actually lives.
+     *
+     * A mirrored package is installed under vendor/ but developed in its mirror
+     * working copy, so the mirror path wins. Everything else falls back to the
+     * install path.
+     */
+    private function sourceRoot(PackageInterface $package): ?string
+    {
+        $mirror = $this->mirrorPath($package->getName());
+        if ($mirror !== null && is_dir($mirror)) {
+            return $mirror;
+        }
+
+        $installPath = $this->composer->getInstallationManager()->getInstallPath($package);
+
+        return is_string($installPath) && is_dir($installPath) ? $installPath : null;
+    }
+
+    private function mirrorPath(string $packageName): ?string
+    {
+        $mirrors = $this->mirrors();
+        if (! isset($mirrors[$packageName])) {
+            return null;
+        }
+
+        $path = str_replace('\\', '/', $mirrors[$packageName]);
+        if (str_starts_with($path, '/')) {
+            return $path;
+        }
+
+        return rtrim((string) getcwd(), '/') . '/' . ltrim($path, '/');
+    }
+
+    /** @return array<string, string> package name => configured mirror path */
+    private function mirrors(): array
+    {
+        $mirrors = SourcePluginConfig::mirrors($this->composer);
+
+        $paths = [];
+        foreach ($mirrors as $packageName => $configuration) {
+            if (! is_string($packageName)) {
+                continue;
+            }
+
+            $path = is_array($configuration) ? ($configuration['path'] ?? null) : $configuration;
+            if (is_string($path) && $path !== '') {
+                $paths[$packageName] = $path;
+            }
+        }
+
+        return $paths;
+    }
+
+    /**
+     * @return array{paths: list<string>, files: list<string>, selected: array|null}
      */
     private function rebasePackage(PackageInterface $package, string $installPath, string $vendorDirectory, NamespaceAliasDefinition $definition): array
     {
@@ -162,7 +245,10 @@ final class NamespaceAliasGenerator
         $paths = [];
         $rebasedRelativeRoot = 'rebased/' . str_replace('/', '--', $package->getName());
         $rebasedRoot = $vendorDirectory . '/composer/' . $rebasedRelativeRoot;
-        $this->rebasePackageFiles($installPath, $rebasedRoot, $definition);
+        $selected = $definition->copy === 'autoload'
+            ? array_merge($sourceDirectories, $autoload['files'] ?? [], $definition->include)
+            : null;
+        $this->rebasePackageFiles($installPath, $rebasedRoot, $definition, $selected, $definition->exclude);
 
         foreach ($sourceDirectories as $sourceDirectory) {
             if (! is_string($sourceDirectory)) {
@@ -179,7 +265,11 @@ final class NamespaceAliasGenerator
 
         return [
             'paths' => $paths,
-            'files' => $this->rebasedAutoloadFiles($autoload['files'] ?? [], $installPath, $rebasedRelativeRoot, $definition),
+            'selected' => $selected,
+            'files' => array_values(array_filter(
+                $this->rebasedAutoloadFiles($autoload['files'] ?? [], $installPath, $rebasedRelativeRoot, $definition),
+                static fn (string $file): bool => is_file($vendorDirectory . '/composer/' . $file),
+            )),
         ];
     }
 
@@ -216,13 +306,20 @@ final class NamespaceAliasGenerator
         return $rebased;
     }
 
-    private function rebasePackageFiles(string $sourcePath, string $rebasedPath, NamespaceAliasDefinition $definition): void
+    private function rebasePackageFiles(string $sourcePath, string $rebasedPath, NamespaceAliasDefinition $definition, ?array $selected = null, array $excluded = []): void
     {
-        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($sourcePath));
+        if ($selected !== null && ! isset($this->preparedRoots[$rebasedPath])) {
+            // A consumer switching policies must not retain yesterday's copied
+            // metadata or deleted classes. Clear this generated tree once, so
+            // multiple namespace definitions can populate it in the same dump.
+            $this->clearGeneratedTree($rebasedPath);
+            $this->preparedRoots[$rebasedPath] = true;
+        }
+        $files = $this->packageFiles($sourcePath, $selected, $excluded);
         $rebaser = new NamespaceRebaser;
 
         foreach ($files as $file) {
-            if (! $file->isFile() || $this->isExcludedPath($file->getPathname(), $sourcePath)) {
+            if (! $file->isFile()) {
                 continue;
             }
 
@@ -250,16 +347,62 @@ final class NamespaceAliasGenerator
         }
     }
 
+    private function pathWithin(string $path, string $root): bool
+    {
+        $normalize = static fn (string $value): string => implode('/', array_filter(explode('/', str_replace('\\', '/', $value)), static fn (string $part): bool => $part !== '' && $part !== '.'));
+        $path = $normalize($path);
+        $root = $normalize($root);
+        return $root === '' || $path === $root || str_starts_with($path, $root . '/');
+    }
+
+    private function packageFiles(string $sourcePath, ?array $selected = null, array $excluded = []): RecursiveIteratorIterator
+    {
+        // Prune complete subtrees consistently for copying and symbol discovery.
+        $directory = new RecursiveDirectoryIterator($sourcePath, \FilesystemIterator::SKIP_DOTS);
+        $filter = new \RecursiveCallbackFilterIterator($directory, function ($file) use ($sourcePath, $selected, $excluded): bool {
+            $relative = str_replace(DIRECTORY_SEPARATOR, '/', substr($file->getPathname(), strlen(rtrim($sourcePath, '/\\')) + 1));
+            foreach ($excluded as $path) {
+                if ($this->pathWithin($relative, $path)) {
+                    return false;
+                }
+            }
+            if ($selected === null) {
+                return ! $this->isExcludedPath($file->getPathname(), $sourcePath);
+            }
+            foreach ($selected as $path) {
+                if (is_string($path) && ($this->pathWithin($relative, $path) || ($file->isDir() && $this->pathWithin($path, $relative)))) {
+                    return true;
+                }
+            }
+            return false;
+        });
+        return new RecursiveIteratorIterator($filter);
+    }
+
+    private function clearGeneratedTree(string $root): void
+    {
+        if (is_link($root)) {
+            throw new RuntimeException('Rebased output directory must not be a symlink: ' . $root);
+        }
+        if (! is_dir($root)) {
+            return;
+        }
+        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
+        foreach ($files as $file) {
+            $removed = $file->isDir() && ! $file->isLink() ? rmdir($file->getPathname()) : unlink($file->getPathname());
+            if (! $removed) {
+                throw new RuntimeException('Unable to remove stale rebased output: ' . $file->getPathname());
+            }
+        }
+    }
+
     /** @return list<array{name: string, kind: string}> */
-    private function discoverSymbols(string $directory): array
+    private function discoverSymbols(string $directory, ?array $selected = null, array $excluded = []): array
     {
         $symbols = [];
-        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory));
+        $files = $this->packageFiles($directory, $selected, $excluded);
 
         foreach ($files as $file) {
-            if ($this->isExcludedPath($file->getPathname(), $directory)) {
-                continue;
-            }
             if (! $file->isFile() || $file->getExtension() !== 'php') {
                 continue;
             }
@@ -461,50 +604,5 @@ PHP;
 
         $contents = "<?php\n\ndeclare(strict_types=1);\n\nreturn ".var_export($containerAliases, true).";\n";
         file_put_contents($file, $contents);
-    }
-
-    private function registerAutoloadFile(string $autoloadFiles, string $marker, string $file, bool $enabled): void
-    {
-        if (! is_file($autoloadFiles)) {
-            return;
-        }
-
-        $contents = file_get_contents($autoloadFiles);
-        if ($contents === false) {
-            throw new RuntimeException('Unable to read Composer autoload files.');
-        }
-
-        $key = var_export($marker, true);
-        $entry = "    {$key} => \$vendorDir . '/composer/{$file}',\n";
-        $contents = preg_replace('/\s*' . preg_quote($key, '/') . '\s*=>[^\n]+,\n/', "\n", $contents) ?? $contents;
-
-        if ($enabled) {
-            $contents = preg_replace('/return array\s*\(\s*\n/', "return array(\n" . $entry, $contents, 1) ?? $contents;
-        }
-
-        file_put_contents($autoloadFiles, $contents);
-        $this->registerStaticAutoloadFile(dirname($autoloadFiles) . '/autoload_static.php', $marker, $file, $enabled);
-    }
-
-    private function registerStaticAutoloadFile(string $autoloadStaticFile, string $marker, string $file, bool $enabled): void
-    {
-        if (! is_file($autoloadStaticFile)) {
-            return;
-        }
-
-        $contents = file_get_contents($autoloadStaticFile);
-        if ($contents === false) {
-            throw new RuntimeException('Unable to read Composer static autoload files.');
-        }
-
-        $key = var_export($marker, true);
-        $entry = "        {$key} => __DIR__ . '/{$file}',\n";
-        $contents = preg_replace('/\s*' . preg_quote($key, '/') . '\s*=>[^\n]+,\n/', "\n", $contents) ?? $contents;
-
-        if ($enabled) {
-            $contents = preg_replace('/public static \$files = array \(\s*\n/', "public static \$files = array (\n" . $entry, $contents, 1) ?? $contents;
-        }
-
-        file_put_contents($autoloadStaticFile, $contents);
     }
 }

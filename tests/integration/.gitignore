@@ -1,0 +1,4 @@
+# Build artifacts from running mirror.sh in this directory.
+consumer/
+upstream/
+.composer/
