@@ -6,18 +6,18 @@ namespace Webong\ComposerSource;
 
 use InvalidArgumentException;
 
-final readonly class MirrorDefinition
+final class MirrorDefinition
 {
     public const ORIGIN_REMOTE = 'remote';
 
-    public string $origin;
+    public readonly string $origin;
 
     /**
      * @throws InvalidArgumentException
      */
     public function __construct(
-        public string $package,
-        public string $path,
+        public readonly string $package,
+        public readonly string $path,
         string $origin = self::ORIGIN_REMOTE,
     ) {
         if (trim($package) === '') {

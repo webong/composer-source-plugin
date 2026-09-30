@@ -63,4 +63,23 @@ final class NamespaceAliasConfigurationTest extends TestCase
             ],
         ]);
     }
+
+    public function testItParsesOptInCopyPolicyWithoutChangingLegacyDefaults(): void
+    {
+        $definitions = NamespaceAliasConfiguration::parse([
+            'acme/library' => ['Acme\\' => 'Local\\', 'type' => 'rebase', 'copy' => 'autoload', 'include' => ['resources'], 'exclude' => ['src/Tests']],
+        ]);
+        self::assertSame('autoload', $definitions[0]->copy);
+        self::assertSame(['resources'], $definitions[0]->include);
+        self::assertSame(['src/Tests'], $definitions[0]->exclude);
+        self::assertSame('package', (new NamespaceAliasDefinition('Acme\\', 'Local\\'))->copy);
+    }
+
+    public function testCopyPathsCannotEscapeThePackage(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        NamespaceAliasConfiguration::parse([
+            'acme/library' => ['Acme\\' => 'Local\\', 'type' => 'rebase', 'include' => ['../secret']],
+        ]);
+    }
 }

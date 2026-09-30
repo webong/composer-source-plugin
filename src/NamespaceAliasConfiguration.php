@@ -43,9 +43,18 @@ final class NamespaceAliasConfiguration
                 ));
             }
 
+            $copy = $value['copy'] ?? 'package';
+            if (! in_array($copy, ['package', 'autoload'], true)) {
+                throw new InvalidArgumentException('Rebase copy must be package or autoload.');
+            }
+            $include = self::paths($value['include'] ?? []);
+            $exclude = self::paths($value['exclude'] ?? []);
+            if ($type !== NamespaceAliasDefinition::TYPE_REBASE && ($copy !== 'package' || $include !== [] || $exclude !== [])) {
+                throw new InvalidArgumentException('Copy options require a rebase alias.');
+            }
             $hasNamespace = false;
             foreach ($value as $sourcePrefix => $targetPrefix) {
-                if ($sourcePrefix === 'type') {
+                if (in_array($sourcePrefix, ['type', 'copy', 'include', 'exclude'], true)) {
                     continue;
                 }
 
@@ -63,6 +72,9 @@ final class NamespaceAliasConfiguration
                     type: $type,
                     package: $key,
                     configuredPrefixes: $configuredPrefixes,
+                    copy: $copy,
+                    include: $include,
+                    exclude: $exclude,
                 );
                 $hasNamespace = true;
             }
@@ -85,6 +97,9 @@ final class NamespaceAliasConfiguration
         array &$configuredPrefixes,
         string $type = NamespaceAliasDefinition::TYPE_SIMPLE,
         ?string $package = null,
+        string $copy = 'package',
+        array $include = [],
+        array $exclude = [],
     ): NamespaceAliasDefinition {
         if ($sourcePrefix === '' || $targetPrefix === '') {
             throw new InvalidArgumentException('Namespace alias prefixes cannot be empty.');
@@ -99,6 +114,19 @@ final class NamespaceAliasConfiguration
 
         $configuredPrefixes[$sourcePrefix] = true;
 
-        return new NamespaceAliasDefinition($sourcePrefix, $targetPrefix, $type, $package);
+        return new NamespaceAliasDefinition($sourcePrefix, $targetPrefix, $type, $package, $copy, $include, $exclude);
+    }
+
+    private static function paths(mixed $paths): array
+    {
+        if (! is_array($paths) || ! array_is_list($paths)) {
+            throw new InvalidArgumentException('Rebase include/exclude must be lists of package-relative paths.');
+        }
+        foreach ($paths as $path) {
+            if (! is_string($path) || $path === '' || str_contains($path, '\\') || str_contains($path, ':') || str_starts_with($path, '/') || in_array('..', explode('/', $path), true)) {
+                throw new InvalidArgumentException('Rebase paths must stay inside the package.');
+            }
+        }
+        return $paths;
     }
 }

@@ -111,12 +111,11 @@ final class SourceMirror
                     continue;
                 }
 
-                // No base for this path: the working copy predates the snapshot
-                // or holds an independent file of the same name. Adopt the
-                // local content as the base so the next sync can reason about
-                // it, and never clobber it now.
+                // Record upstream, never the divergent local content. Otherwise
+                // the next sync mistakes local work for an untouched upstream
+                // file and overwrites it, even when upstream has not changed.
                 $preserved[] = $path;
-                $nextBase[$path] = $localHash;
+                $nextBase[$path] = $upstreamHash;
                 $unbased[] = $path;
 
                 continue;
@@ -148,7 +147,7 @@ final class SourceMirror
 
         if ($unbased !== []) {
             $warnings[] = sprintf(
-                'No previous sync snapshot for %d file(s); local content adopted as the new baseline. Review before trusting later syncs.',
+                'No previous sync snapshot for %d file(s); local content preserved and current upstream recorded as the baseline.',
                 count($unbased),
             );
         }

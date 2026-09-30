@@ -36,7 +36,7 @@
     },
     "scripts": {
         "test": "phpunit --configuration phpunit.xml.dist",
-        "test:integration": "docker run --rm -v \"$PWD/tests/integration:/lab\" -v \"$PWD:/plugin\" -w /lab -e COMPOSER_ALLOW_SUPERUSER=1 -e COMPOSER_HOME=/lab/.composer composer:2 bash /lab/mirror.sh"
+        "test:integration": "docker run --rm -v \"$PWD:/plugin:ro\" -e COMPOSER_ALLOW_SUPERUSER=1 -e COMPOSER_HOME=/tmp/composer composer:2 bash /plugin/tests/integration/mirror.sh"
     },
     "config": {
         "sort-packages": true,

@@ -17,6 +17,9 @@ final class NamespaceAliasGenerator
     private const REBASE_AUTOLOAD_FILE = 'namespace_rebases.php';
     private const CONTAINER_ALIASES_FILE = 'source_aliases.php';
 
+    /** @var array<string, true> */
+    private array $preparedRoots = [];
+
     public function __construct(
         private readonly Composer $composer,
         private readonly IOInterface $io,
@@ -25,6 +28,7 @@ final class NamespaceAliasGenerator
 
     public function generate(): void
     {
+        $this->preparedRoots = [];
         $vendorDirectory = $this->composer->getConfig()->get('vendor-dir');
         $generatedFile = $vendorDirectory . '/composer/' . self::AUTOLOAD_FILE;
         $rebaseGeneratedFile = $vendorDirectory . '/composer/' . self::REBASE_AUTOLOAD_FILE;
@@ -124,7 +128,7 @@ final class NamespaceAliasGenerator
                 continue;
             }
 
-            foreach ($this->discoverSymbols($installPath) as $symbol) {
+            foreach ($this->discoverSymbols($installPath, $rebased['selected'], $definition->exclude) as $symbol) {
                 if (! str_starts_with($symbol['name'], $definition->sourcePrefix)) {
                     continue;
                 }
@@ -228,7 +232,7 @@ final class NamespaceAliasGenerator
     }
 
     /**
-     * @return array{paths: list<string>, files: list<string>}
+     * @return array{paths: list<string>, files: list<string>, selected: array|null}
      */
     private function rebasePackage(PackageInterface $package, string $installPath, string $vendorDirectory, NamespaceAliasDefinition $definition): array
     {
@@ -241,7 +245,10 @@ final class NamespaceAliasGenerator
         $paths = [];
         $rebasedRelativeRoot = 'rebased/' . str_replace('/', '--', $package->getName());
         $rebasedRoot = $vendorDirectory . '/composer/' . $rebasedRelativeRoot;
-        $this->rebasePackageFiles($installPath, $rebasedRoot, $definition);
+        $selected = $definition->copy === 'autoload'
+            ? array_merge($sourceDirectories, $autoload['files'] ?? [], $definition->include)
+            : null;
+        $this->rebasePackageFiles($installPath, $rebasedRoot, $definition, $selected, $definition->exclude);
 
         foreach ($sourceDirectories as $sourceDirectory) {
             if (! is_string($sourceDirectory)) {
@@ -258,7 +265,11 @@ final class NamespaceAliasGenerator
 
         return [
             'paths' => $paths,
-            'files' => $this->rebasedAutoloadFiles($autoload['files'] ?? [], $installPath, $rebasedRelativeRoot, $definition),
+            'selected' => $selected,
+            'files' => array_values(array_filter(
+                $this->rebasedAutoloadFiles($autoload['files'] ?? [], $installPath, $rebasedRelativeRoot, $definition),
+                static fn (string $file): bool => is_file($vendorDirectory . '/composer/' . $file),
+            )),
         ];
     }
 
@@ -295,13 +306,20 @@ final class NamespaceAliasGenerator
         return $rebased;
     }
 
-    private function rebasePackageFiles(string $sourcePath, string $rebasedPath, NamespaceAliasDefinition $definition): void
+    private function rebasePackageFiles(string $sourcePath, string $rebasedPath, NamespaceAliasDefinition $definition, ?array $selected = null, array $excluded = []): void
     {
-        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($sourcePath));
+        if ($selected !== null && ! isset($this->preparedRoots[$rebasedPath])) {
+            // A consumer switching policies must not retain yesterday's copied
+            // metadata or deleted classes. Clear this generated tree once, so
+            // multiple namespace definitions can populate it in the same dump.
+            $this->clearGeneratedTree($rebasedPath);
+            $this->preparedRoots[$rebasedPath] = true;
+        }
+        $files = $this->packageFiles($sourcePath, $selected, $excluded);
         $rebaser = new NamespaceRebaser;
 
         foreach ($files as $file) {
-            if (! $file->isFile() || $this->isExcludedPath($file->getPathname(), $sourcePath)) {
+            if (! $file->isFile()) {
                 continue;
             }
 
@@ -329,16 +347,62 @@ final class NamespaceAliasGenerator
         }
     }
 
+    private function pathWithin(string $path, string $root): bool
+    {
+        $normalize = static fn (string $value): string => implode('/', array_filter(explode('/', str_replace('\\', '/', $value)), static fn (string $part): bool => $part !== '' && $part !== '.'));
+        $path = $normalize($path);
+        $root = $normalize($root);
+        return $root === '' || $path === $root || str_starts_with($path, $root . '/');
+    }
+
+    private function packageFiles(string $sourcePath, ?array $selected = null, array $excluded = []): RecursiveIteratorIterator
+    {
+        // Prune complete subtrees consistently for copying and symbol discovery.
+        $directory = new RecursiveDirectoryIterator($sourcePath, \FilesystemIterator::SKIP_DOTS);
+        $filter = new \RecursiveCallbackFilterIterator($directory, function ($file) use ($sourcePath, $selected, $excluded): bool {
+            $relative = str_replace(DIRECTORY_SEPARATOR, '/', substr($file->getPathname(), strlen(rtrim($sourcePath, '/\\')) + 1));
+            foreach ($excluded as $path) {
+                if ($this->pathWithin($relative, $path)) {
+                    return false;
+                }
+            }
+            if ($selected === null) {
+                return ! $this->isExcludedPath($file->getPathname(), $sourcePath);
+            }
+            foreach ($selected as $path) {
+                if (is_string($path) && ($this->pathWithin($relative, $path) || ($file->isDir() && $this->pathWithin($path, $relative)))) {
+                    return true;
+                }
+            }
+            return false;
+        });
+        return new RecursiveIteratorIterator($filter);
+    }
+
+    private function clearGeneratedTree(string $root): void
+    {
+        if (is_link($root)) {
+            throw new RuntimeException('Rebased output directory must not be a symlink: ' . $root);
+        }
+        if (! is_dir($root)) {
+            return;
+        }
+        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
+        foreach ($files as $file) {
+            $removed = $file->isDir() && ! $file->isLink() ? rmdir($file->getPathname()) : unlink($file->getPathname());
+            if (! $removed) {
+                throw new RuntimeException('Unable to remove stale rebased output: ' . $file->getPathname());
+            }
+        }
+    }
+
     /** @return list<array{name: string, kind: string}> */
-    private function discoverSymbols(string $directory): array
+    private function discoverSymbols(string $directory, ?array $selected = null, array $excluded = []): array
     {
         $symbols = [];
-        $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory));
+        $files = $this->packageFiles($directory, $selected, $excluded);
 
         foreach ($files as $file) {
-            if ($this->isExcludedPath($file->getPathname(), $directory)) {
-                continue;
-            }
             if (! $file->isFile() || $file->getExtension() !== 'php') {
                 continue;
             }

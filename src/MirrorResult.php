@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Webong\ComposerSource;
 
-final readonly class MirrorResult
+final class MirrorResult
 {
     /**
      * @param list<string> $written   files taken from upstream
@@ -15,14 +15,14 @@ final readonly class MirrorResult
      * @param list<string> $warnings
      */
     public function __construct(
-        public string $package,
-        public array $written = [],
-        public array $unchanged = [],
-        public array $removed = [],
-        public array $preserved = [],
-        public array $conflicts = [],
-        public array $warnings = [],
-        public bool $unbased = false,
+        public readonly string $package,
+        public readonly array $written = [],
+        public readonly array $unchanged = [],
+        public readonly array $removed = [],
+        public readonly array $preserved = [],
+        public readonly array $conflicts = [],
+        public readonly array $warnings = [],
+        public readonly bool $unbased = false,
     ) {
     }
 

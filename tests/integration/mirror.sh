@@ -11,16 +11,13 @@
 #     -w /lab -e COMPOSER_ALLOW_SUPERUSER=1 -e COMPOSER_HOME=/lab/.composer \
 #     composer:2 bash /lab/mirror.sh
 #
-#!/usr/bin/env bash
-# Integration harness for the local source mirror feature.
-# Runs entirely inside the container; no consumer app required.
 set -uo pipefail
 
-LAB=/lab
+LAB=$(mktemp -d)
 UPSTREAM="$LAB/upstream"
 CONSUMER="$LAB/consumer"
 MIRROR="$CONSUMER/ext/fluent"
-PLUGIN=/plugin
+PLUGIN=${PLUGIN:-/plugin}
 
 PASS=0
 FAIL=0
@@ -69,7 +66,8 @@ cat > "$CONSUMER/composer.json" <<JSON
   "require": { "acme/fluent": "@dev", "webong/composer-source-plugin": "@dev" },
   "repositories": [
     { "type": "path", "url": "$PLUGIN", "options": { "symlink": true } },
-    { "type": "vcs", "url": "$UPSTREAM" }
+    { "type": "vcs", "url": "$UPSTREAM" },
+    { "packagist.org": false }
   ],
   "extra": {
     "source-plugin": {
@@ -134,14 +132,15 @@ run_composer update >/dev/null
 assert_contains "$MIRROR/src/Other.php" "UPSTREAM" "accepted upstream version in place"
 
 section "8. the aliased namespace resolves at runtime"
-( cd "$CONSUMER" && php -r '
+if ( cd "$CONSUMER" && php -r '
 require "vendor/autoload.php";
 $ok = class_exists("Local\\Fluent\\Thing");
 $viaAlias = class_exists("Acme\\Fluent\\Thing");
 printf("Local\\Fluent\\Thing: %s\n", $ok ? "loads" : "MISSING");
 printf("Acme\\Fluent\\Thing:  %s\n", $viaAlias ? "loads" : "MISSING");
 printf("same class: %s\n", ($ok && $viaAlias) && (new ReflectionClass("Local\\Fluent\\Thing"))->getName() === (new ReflectionClass("Acme\\Fluent\\Thing"))->getName() ? "yes" : "no");
-' ) | sed 's/^/    /'
+exit(($ok && $viaAlias) && (new ReflectionClass("Local\\Fluent\\Thing"))->getName() === (new ReflectionClass("Acme\\Fluent\\Thing"))->getName() ? 0 : 1);
+' ); then pass "both namespaces resolve to the rebased class"; else fail "runtime alias loading"; fi
 
 section "9. mirroring and loading the same package is rejected"
 cp "$CONSUMER/composer.json" "$CONSUMER/composer.json.bak"
@@ -174,6 +173,29 @@ assert_contains "$CONSUMER/vendor/acme/fluent/src/Thing.php" "upstream-v1" "vend
 assert_dir "$CONSUMER/vendor/composer/rebased/acme--fluent/src" "rebase still generated without mirrors"
 assert_dir "$CONSUMER/vendor/composer" "no mirror directory created"
 assert_no_file "$CONSUMER/ext/fluent/src/Thing.php" "nothing mirrored into ext"
+
+section "11. opt-in autoload copying preserves layout and removes old metadata"
+mkdir -p "$UPSTREAM/src/Tests" "$UPSTREAM/resources"
+printf '<?php namespace Acme\\Fluent\\Tests; class Hidden {}\n' > "$UPSTREAM/src/Tests/Hidden.php"
+printf 'runtime resource\n' > "$UPSTREAM/resources/view.txt"
+upstream_commit "add resource and nested development source"
+php -r '
+$f = $argv[1];
+$j = json_decode(file_get_contents($f), true);
+$j["extra"]["source-plugin"]["aliases"]["acme/fluent"]["copy"] = "autoload";
+$j["extra"]["source-plugin"]["aliases"]["acme/fluent"]["include"] = ["resources"];
+$j["extra"]["source-plugin"]["aliases"]["acme/fluent"]["exclude"] = ["src/Tests"];
+file_put_contents($f, json_encode($j, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES));
+' "$CONSUMER/composer.json"
+if run_composer update >/dev/null; then pass "autoload policy update succeeds"; else fail "autoload policy update"; fi
+assert_file "$CONSUMER/vendor/composer/rebased/acme--fluent/src/Thing.php" "original source layout retained"
+assert_file "$CONSUMER/vendor/composer/rebased/acme--fluent/resources/view.txt" "explicit runtime resource copied"
+assert_no_file "$CONSUMER/vendor/composer/rebased/acme--fluent/README.md" "stale root documentation removed"
+assert_no_file "$CONSUMER/vendor/composer/rebased/acme--fluent/composer.json" "stale manifest removed"
+assert_no_file "$CONSUMER/vendor/composer/rebased/acme--fluent/src/Tests/Hidden.php" "nested development subtree excluded"
+assert_missing "$CONSUMER/vendor/composer/namespace_rebases.php" "Hidden" "excluded symbols are not registered"
+if (cd "$CONSUMER" && php -r 'require "vendor/autoload.php"; exit(class_exists("Local\\Fluent\\Thing") ? 0 : 1);'); then pass "lean rebase loads at runtime"; else fail "lean runtime loading"; fi
+assert_eq "$(grep -c 'class_alias.*Thing' "$CONSUMER/vendor/composer/namespace_rebases.php")" "1" "installed dev aliases generate one class alias"
 
 echo
 echo "================ $PASS passed, $FAIL failed ================"

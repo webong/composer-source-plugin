@@ -197,6 +197,21 @@ final class SourceMirrorTest extends TestCase
         self::assertSame('acme/fluent', $state['package']);
     }
 
+    public function testUnbasedLocalContentSurvivesRepeatedSyncsAndUpstreamChanges(): void
+    {
+        mkdir($this->mirror . '/src', 0777, true);
+        file_put_contents($this->mirror . '/src/Thing.php', 'local work');
+        $this->upstream('src/Thing.php', 'upstream v1');
+        $this->mirrorSync();
+        $this->mirrorSync();
+        self::assertSame('local work', $this->mirrorFile('src/Thing.php'));
+
+        $this->upstream('src/Thing.php', 'upstream v2');
+        $result = $this->mirrorSync();
+        self::assertSame('local work', $this->mirrorFile('src/Thing.php'));
+        self::assertSame(['src/Thing.php'], $result->conflicts);
+    }
+
     private function upstream(string $relative, string $contents): void
     {
         $file = $this->source . '/' . $relative;
