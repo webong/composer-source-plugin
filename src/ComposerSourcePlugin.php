@@ -21,6 +21,10 @@ final class ComposerSourcePlugin implements PluginInterface, EventSubscriberInte
     {
         $this->composer = $composer;
         $this->io = $io;
+
+        // Fail loudly and early on a contradictory configuration, before any
+        // command mutates the dependency pool.
+        SourcePluginConfig::assertValid($composer);
     }
 
     public function deactivate(Composer $composer, IOInterface $io): void
@@ -39,8 +43,21 @@ final class ComposerSourcePlugin implements PluginInterface, EventSubscriberInte
     {
         return [
             'pre-pool-create' => 'selectPackageSources',
+            // Sync runs immediately before the autoload dump so the rebase
+            // always reads post-sync sources. post-install-cmd and
+            // post-update-cmd both fire after the dump, which is too late.
+            ScriptEvents::PRE_AUTOLOAD_DUMP => 'syncMirrors',
             ScriptEvents::POST_AUTOLOAD_DUMP => 'generateAliases',
         ];
+    }
+
+    public function syncMirrors(Event $event): void
+    {
+        if (! $this->composer instanceof Composer) {
+            return;
+        }
+
+        (new PackageMirrorSynchroniser($this->composer, $event->getIO()))->sync();
     }
 
     /**

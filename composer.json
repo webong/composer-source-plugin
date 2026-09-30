@@ -16,7 +16,10 @@
     "autoload": {
         "psr-4": {
             "Webong\\ComposerSource\\": "src/"
-        }
+        },
+        "files": [
+            "src/bootstrap.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {
@@ -32,7 +35,8 @@
         }
     },
     "scripts": {
-        "test": "phpunit --configuration phpunit.xml.dist"
+        "test": "phpunit --configuration phpunit.xml.dist",
+        "test:integration": "docker run --rm -v \"$PWD/tests/integration:/lab\" -v \"$PWD:/plugin\" -w /lab -e COMPOSER_ALLOW_SUPERUSER=1 -e COMPOSER_HOME=/lab/.composer composer:2 bash /lab/mirror.sh"
     },
     "config": {
         "sort-packages": true,

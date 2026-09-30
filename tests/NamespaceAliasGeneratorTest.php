@@ -22,12 +22,28 @@ final class NamespaceAliasGeneratorTest extends TestCase
         );
     }
 
-    public function testGeneratedAliasesAreRegisteredForOptimizedComposerAutoloading(): void
+    public function testGeneratedAliasesAreLoadedThroughThePluginFilesAutoloadEntry(): void
     {
-        $generator = (string) file_get_contents(__DIR__ . '/../src/NamespaceAliasGenerator.php');
+        $composer = json_decode((string) file_get_contents(__DIR__ . '/../composer.json'), true, flags: JSON_THROW_ON_ERROR);
 
-        self::assertStringContainsString('registerStaticAutoloadFile', $generator);
-        self::assertStringContainsString("'/autoload_static.php'", $generator);
+        // Composer omits the files-loading section of the generated autoloader
+        // unless some package declares a "files" autoload entry, so the plugin
+        // must declare its own or the generated files are never loaded.
+        self::assertSame(['src/bootstrap.php'], $composer['autoload']['files']);
+
+        $bootstrap = (string) file_get_contents(__DIR__ . '/../src/bootstrap.php');
+        self::assertStringContainsString('namespace_aliases.php', $bootstrap);
+        self::assertStringContainsString('namespace_rebases.php', $bootstrap);
+    }
+
+    public function testTheBootstrapFindsTheComposerDirectoryFromAnyInstallDepth(): void
+    {
+        $bootstrap = (string) file_get_contents(__DIR__ . '/../src/bootstrap.php');
+
+        // It must not assume a fixed vendor/<vendor>/<package>/src depth, or it
+        // breaks for path repositories and non-standard vendor dirs.
+        self::assertStringContainsString('dirname(', $bootstrap);
+        self::assertStringNotContainsString("dirname(__DIR__, 3)", $bootstrap);
     }
 
     public function testRebasedAutoloadPathsAreResolvedRelativeToTheGeneratedFile(): void

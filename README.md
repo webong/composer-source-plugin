@@ -85,6 +85,118 @@ supported:
 }
 ```
 
+## Local source mirrors
+
+A mirror keeps a working copy of an installed dependency at a path in your
+repository, and syncs upstream into it whenever you run `composer update`.
+
+Configure it under `extra.source-plugin.mirrors`:
+
+```json
+{
+    "require": {
+        "acme/fluent": "^2.0"
+    },
+    "extra": {
+        "source-plugin": {
+            "mirrors": {
+                "acme/fluent": {
+                    "path": "ext/fluent"
+                }
+            },
+            "aliases": {
+                "acme/fluent": {
+                    "Acme\\Fluent\\": "Local\\Fluent\\",
+                    "type": "rebase"
+                }
+            }
+        }
+    }
+}
+```
+
+With that, `composer update` downloads the new release into `vendor/` as
+usual, and the plugin then syncs it into `ext/fluent`. The package stays
+installed remotely, so upstream updates flow in normally, and your working
+copy stays on disk under version control.
+
+Bring the working copy into the build with
+[`wikimedia/composer-merge-plugin`](https://github.com/wikimedia/composer-merge-plugin),
+which is suggested rather than required:
+
+```json
+{
+    "extra": {
+        "merge-plugin": {
+            "include": ["ext/fluent/composer.json"]
+        }
+    }
+}
+```
+
+**No `path` repository is needed.** A `path` repository with
+`"symlink": true` would make Composer treat your working copy as the package,
+which stops upstream updates from ever being downloaded. A mirror is the
+opposite: the remote package stays the installed one, and the mirror is the
+copy you edit. When a `rebase` alias is configured, the rebase reads from the
+mirror path.
+
+### Mirrors and loaders are mutually exclusive
+
+A package cannot be in both `mirrors` and `loaders`, and the plugin rejects
+the combination at activation:
+
+> Package [acme/fluent] cannot be both mirrored and loadable: a mirror needs
+> the remote package installed, while a loader removes it from the pool.
+> Configure one or the other.
+
+`mirrors` requires the remote package to stay installed so it can be synced
+and updated. `loaders` deliberately removes a package from the pool. Pick one
+per package.
+
+### How local edits are protected
+
+Merging is file-level, not line-level. The plugin records what the mirror
+looked like when it was last synced in `ext/fluent/.source-plugin/sync.json`,
+committed alongside your working copy so the baseline is reproducible across
+machines. Commit it.
+
+On each sync, for every file upstream ships:
+
+| Situation | Result |
+| --- | --- |
+| File already matches upstream | Untouched |
+| You have not changed it, upstream has | Upstream version written |
+| You changed it, upstream has not | **Your edit kept** |
+| Both changed | **Reported as a conflict**, never overwritten |
+
+A conflict leaves your file alone and writes the upstream version next to it as
+`path/to/File.php.upstream`, so you can diff and decide. The conflict persists
+across syncs until the file actually matches upstream, which means you can also
+resolve it by editing your copy to match.
+
+Files upstream deletes are removed only when you have not modified them;
+otherwise they are kept with a warning. Files that only exist locally are
+never touched and never recorded as baseline.
+
+Two limits are worth stating plainly:
+
+- **A file changed on both sides is reported, never auto-merged.** There is no
+  line-level merge. A conflicted file is left exactly as you wrote it.
+- **A working copy with no `sync.json` is treated as unbased.** Existing local
+  files are kept and adopted as the new baseline, with a warning. The first
+  sync after a fresh clone never destroys work, but review it.
+
+`composer.json` in the mirror is synced like any other file, so it is subject
+to the same protection: edit it freely, and an upstream change to it shows up
+as a conflict rather than clobbering your edits.
+
+The sync runs on `pre-autoload-dump`, immediately before the autoloader is
+generated, so a `rebase` always reads post-sync sources. A failing sync warns
+and never aborts the install. Note that a Composer plugin cannot act on the
+run that first installs it, so the first `composer update` only installs the
+plugin.
+
 ## Unified configuration
 
 Package source selection and namespace aliases are configured together under
