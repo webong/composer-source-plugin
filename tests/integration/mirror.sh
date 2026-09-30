@@ -142,6 +142,30 @@ printf("same class: %s\n", ($ok && $viaAlias) && (new ReflectionClass("Local\\Fl
 exit(($ok && $viaAlias) && (new ReflectionClass("Local\\Fluent\\Thing"))->getName() === (new ReflectionClass("Acme\\Fluent\\Thing"))->getName() ? 0 : 1);
 ' ); then pass "both namespaces resolve to the rebased class"; else fail "runtime alias loading"; fi
 
+section "8a. project lock migrates legacy state and survives Composer lifecycle"
+php -r '
+$f = $argv[1];
+$j = json_decode(file_get_contents($f), true);
+$j["extra"]["source-plugin"]["mirror-state"] = "lock";
+file_put_contents($f, json_encode($j, JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES));
+' "$CONSUMER/composer.json"
+if run_composer update >/dev/null; then pass "project lock migration succeeds"; else fail "project lock migration"; fi
+assert_file "$CONSUMER/composer-source.lock" "project lock created"
+assert_no_file "$MIRROR/.source-plugin/sync.json" "legacy state removed after migration"
+assert_contains "$CONSUMER/composer-source.lock" '"namespaces"' "transformation stored with baseline"
+LOCK_BEFORE=$(sha256sum "$CONSUMER/composer-source.lock")
+run_composer install >/dev/null
+run_composer dump-autoload >/dev/null
+assert_eq "$(sha256sum "$CONSUMER/composer-source.lock")" "$LOCK_BEFORE" "install and dump leave baseline untouched"
+run_composer update --no-install >/dev/null
+assert_eq "$(sha256sum "$CONSUMER/composer-source.lock")" "$LOCK_BEFORE" "resolution without install retains baseline"
+run_composer update --no-plugins --no-scripts >/dev/null
+assert_eq "$(sha256sum "$CONSUMER/composer-source.lock")" "$LOCK_BEFORE" "disabled plugins cannot erase baseline"
+run_composer update --dry-run >/dev/null
+assert_eq "$(sha256sum "$CONSUMER/composer-source.lock")" "$LOCK_BEFORE" "dry run leaves baseline untouched"
+run_composer update >/dev/null
+assert_eq "$(sha256sum "$CONSUMER/composer-source.lock")" "$LOCK_BEFORE" "repeat update leaves baseline unchanged"
+
 section "9. mirroring and loading the same package is rejected"
 cp "$CONSUMER/composer.json" "$CONSUMER/composer.json.bak"
 php -r '

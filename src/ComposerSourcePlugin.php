@@ -17,6 +17,8 @@ final class ComposerSourcePlugin implements PluginInterface, EventSubscriberInte
 
     private ?IOInterface $io = null;
 
+    private bool $updating = false;
+
     public function activate(Composer $composer, IOInterface $io): void
     {
         $this->composer = $composer;
@@ -42,6 +44,7 @@ final class ComposerSourcePlugin implements PluginInterface, EventSubscriberInte
     public static function getSubscribedEvents(): array
     {
         return [
+            ScriptEvents::PRE_UPDATE_CMD => 'beginUpdate',
             'pre-pool-create' => 'selectPackageSources',
             // Sync runs immediately before the autoload dump so the rebase
             // always reads post-sync sources. post-install-cmd and
@@ -57,7 +60,12 @@ final class ComposerSourcePlugin implements PluginInterface, EventSubscriberInte
             return;
         }
 
-        (new PackageMirrorSynchroniser($this->composer, $event->getIO()))->sync();
+        (new PackageMirrorSynchroniser($this->composer, $event->getIO(), $this->updating))->sync();
+    }
+
+    public function beginUpdate(Event $event): void
+    {
+        $this->updating = true;
     }
 
     /**

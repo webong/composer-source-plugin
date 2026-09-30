@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Webong\ComposerSource;
 
 use Composer\Composer;
+use Composer\Factory;
 use Composer\IO\IOInterface;
 use Composer\Package\PackageInterface;
 use Throwable;
@@ -14,6 +15,7 @@ final class PackageMirrorSynchroniser
     public function __construct(
         private readonly Composer $composer,
         private readonly IOInterface $io,
+        private readonly bool $updating = false,
     ) {
     }
 
@@ -72,6 +74,8 @@ final class PackageMirrorSynchroniser
                 mirrorRoot: $mirrorRoot,
                 package: $definition->package,
                 rebases: $this->mirrorRebases($definition->package),
+                stateFile: $this->stateFile(),
+                writeState: $this->stateFile() === null || $this->updating,
             ))->sync($this->reference($package));
         } catch (Throwable $exception) {
             // A mirror problem must never abort the install.
@@ -97,6 +101,15 @@ final class PackageMirrorSynchroniser
                 && $definition->type === NamespaceAliasDefinition::TYPE_REBASE
                 && $definition->destination === NamespaceAliasDefinition::DESTINATION_MIRROR,
         ));
+    }
+
+    private function stateFile(): ?string
+    {
+        if ((SourcePluginConfig::section($this->composer)['mirror-state'] ?? 'local') !== 'lock') {
+            return null;
+        }
+        $manifest = Factory::getComposerFile();
+        return dirname($manifest) . '/' . pathinfo($manifest, PATHINFO_FILENAME) . '-source.lock';
     }
 
     private function report(MirrorDefinition $definition, MirrorResult $result): void

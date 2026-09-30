@@ -35,6 +35,8 @@ final class SourceMirror
         private readonly string $package,
         /** @var list<NamespaceAliasDefinition> */
         private readonly array $rebases = [],
+        private readonly ?string $stateFile = null,
+        private readonly bool $writeState = true,
     ) {
     }
 
@@ -48,9 +50,19 @@ final class SourceMirror
             ));
         }
 
+        $state = MirrorState::load($this->mirrorRoot, $this->stateFile, $this->package);
+        $namespaces = [];
+        foreach ($this->rebases as $rebase) {
+            $namespaces[$rebase->sourcePrefix] = $rebase->targetPrefix;
+        }
+        ksort($namespaces);
+        if ($this->stateFile !== null && isset($state['namespaces']) && $state['namespaces'] !== $namespaces) {
+            throw new RuntimeException('Mirror namespace mapping differs from its locked baseline; migrate the working copy before changing mappings.');
+        }
+        if ($this->stateFile !== null && ! $this->writeState && (! isset($state['namespaces']) || $state['reference'] !== $reference)) {
+            throw new RuntimeException('Mirror baseline is missing or does not match the installed reference; run composer update to sync it.');
+        }
         $this->createMirrorRoot();
-
-        $state = MirrorState::load($this->mirrorRoot);
         $base = $state['files'];
 
         $upstream = $this->upstreamFiles();
@@ -175,7 +187,9 @@ final class SourceMirror
             );
         }
 
-        MirrorState::save($this->mirrorRoot, $this->package, $reference ?? $state['reference'], $nextBase);
+        if ($this->writeState) {
+            MirrorState::save($this->mirrorRoot, $this->package, $reference ?? $state['reference'], $nextBase, $this->stateFile, $namespaces);
+        }
 
         return new MirrorResult(
             package: $this->package,

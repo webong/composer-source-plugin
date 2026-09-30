@@ -67,6 +67,9 @@ final class SourcePluginConfig
      */
     public static function assertValid(Composer $composer): void
     {
+        if (! in_array(self::section($composer)['mirror-state'] ?? 'local', ['local', 'lock'], true)) {
+            throw new InvalidArgumentException('source-plugin.mirror-state must be local or lock.');
+        }
         MirrorConfiguration::parse(self::mirrors($composer), self::loaders($composer));
     }
 }
