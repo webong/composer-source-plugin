@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace Webong\ComposerSource;
 
 use Composer\Composer;
+use Composer\Installer\PackageEvent;
+use Composer\Installer\PackageEvents;
 use Composer\IO\IOInterface;
+use Composer\Plugin\CommandEvent;
+use Composer\Plugin\PluginEvents;
 use Composer\Plugin\PluginInterface;
 use Composer\Script\Event;
 use Composer\Script\ScriptEvents;
@@ -18,6 +22,11 @@ final class ComposerSourcePlugin implements PluginInterface, EventSubscriberInte
     private ?IOInterface $io = null;
 
     private bool $updating = false;
+
+    private bool $reinstalling = false;
+
+    /** @var array<string, true> */
+    private array $freshPackages = [];
 
     public function activate(Composer $composer, IOInterface $io): void
     {
@@ -44,23 +53,29 @@ final class ComposerSourcePlugin implements PluginInterface, EventSubscriberInte
     public static function getSubscribedEvents(): array
     {
         return [
+            PluginEvents::COMMAND => 'beginCommand',
             ScriptEvents::PRE_UPDATE_CMD => 'beginUpdate',
             'pre-pool-create' => 'selectPackageSources',
-            // Sync runs immediately before the autoload dump so the rebase
-            // always reads post-sync sources. post-install-cmd and
-            // post-update-cmd both fire after the dump, which is too late.
-            ScriptEvents::PRE_AUTOLOAD_DUMP => 'syncMirrors',
+            PackageEvents::POST_PACKAGE_INSTALL => 'projectPackage',
+            PackageEvents::POST_PACKAGE_UPDATE => 'projectPackage',
+            // Projections are applied during package installation, before the
+            // autoloader is generated. The pre-dump pass reconciles projected
+            // packages that were not reinstalled (notably narrowing).
+            ScriptEvents::PRE_AUTOLOAD_DUMP => 'beforeAutoloadDump',
             ScriptEvents::POST_AUTOLOAD_DUMP => 'generateAliases',
+            // Covers operations that skip autoload generation; a no-install
+            // update never records package events, so this stays inert there.
+            ScriptEvents::POST_INSTALL_CMD => 'finalizeProjections',
+            ScriptEvents::POST_UPDATE_CMD => 'finalizeProjections',
         ];
     }
 
-    public function syncMirrors(Event $event): void
+    public function beginCommand(object $event): void
     {
-        if (! $this->composer instanceof Composer) {
-            return;
+        if (method_exists($event, 'getCommandName')) {
+            $this->reinstalling = $event->getCommandName() === 'reinstall';
         }
-
-        (new PackageMirrorSynchroniser($this->composer, $event->getIO(), $this->updating))->sync();
+        $this->freshPackages = [];
     }
 
     public function beginUpdate(Event $event): void
@@ -84,6 +99,51 @@ final class ComposerSourcePlugin implements PluginInterface, EventSubscriberInte
         (new PackageSourceSelector($this->composer, $this->io))->select($event);
     }
 
+    public function projectPackage(PackageEvent $event): void
+    {
+        if (! $this->composer instanceof Composer || ! $this->io instanceof IOInterface) {
+            return;
+        }
+
+        $operation = $event->getOperation();
+        $package = method_exists($operation, 'getTargetPackage')
+            ? $operation->getTargetPackage()
+            : $operation->getPackage();
+
+        $name = strtolower($package->getName());
+        $this->freshPackages[$name] = true;
+
+        $this->manager()->projectPackage($package);
+    }
+
+    public function beforeAutoloadDump(Event $event): void
+    {
+        if (! $this->composer instanceof Composer) {
+            return;
+        }
+
+        $this->manager()->reconcile($this->freshPackages);
+        $this->syncMirrors($event);
+    }
+
+    public function finalizeProjections(Event $event): void
+    {
+        if (! $this->composer instanceof Composer || $this->freshPackages === []) {
+            return;
+        }
+
+        $this->manager()->reconcile($this->freshPackages);
+    }
+
+    public function syncMirrors(Event $event): void
+    {
+        if (! $this->composer instanceof Composer) {
+            return;
+        }
+
+        (new PackageMirrorSynchroniser($this->composer, $event->getIO(), $this->updating))->sync();
+    }
+
     public function generateAliases(Event $event): void
     {
         if (! $this->composer instanceof Composer) {
@@ -96,5 +156,15 @@ final class ComposerSourcePlugin implements PluginInterface, EventSubscriberInte
         );
 
         $generator->generate();
+    }
+
+    private function manager(): ProjectionManager
+    {
+        return new ProjectionManager(
+            $this->composer,
+            $this->io,
+            $this->updating,
+            $this->reinstalling,
+        );
     }
 }

@@ -275,6 +275,267 @@ before writing it to the mirror and records the transformed content as its
 baseline. Local edits remain protected and upstream conflicts retain the same
 file-level behavior. Composer's package name is unchanged.
 
+### Package surfaces and projections
+
+A **surface** is a named group of files declared by a package author. A
+**projection** is a consumer's selection of surfaces from one normally
+installed package.
+
+Composer downloads the package's **complete dist/source archive** as usual.
+The plugin then removes every unselected file from the installed copy, so
+`vendor/acme/monolith` retains only the chosen surfaces. Packagist does not
+serve partial archives, and this feature does not reduce network transfer.
+
+A projection is not a metapackage and not an independently versioned package.
+It is a projected installation of one package.
+
+#### Author configuration
+
+Declare surfaces in the package's own root `composer.json`:
+
+```json
+{
+    "name": "acme/monolith",
+    "extra": {
+        "source-plugin": {
+            "surfaces": {
+                "core": {
+                    "include": ["composer.json", "LICENSE", "src/Core/**"]
+                },
+                "javascript": {
+                    "include": ["src/JavaScript/**", "resources/javascript/**"]
+                },
+                "lua": {
+                    "include": ["src/Lua/**", "resources/lua/**"]
+                }
+            }
+        }
+    }
+}
+```
+
+Include paths are package-relative. `*` matches within one path segment,
+`**` matches across segments, `?` matches one non-separator character, and
+`[a-z]` character classes are supported. Naming a directory includes its whole
+subtree, so `src/Core` and `src/Core/**` select the same files.
+
+#### Consumer configuration
+
+Select surfaces in the consuming root `composer.json`:
+
+```json
+{
+    "require": {
+        "webong/composer-source-plugin": "^1.0",
+        "acme/monolith": "^1.0"
+    },
+    "extra": {
+        "source-plugin": {
+            "projections": {
+                "acme/monolith": {
+                    "surfaces": ["core", "javascript"]
+                }
+            }
+        }
+    }
+}
+```
+
+The result is:
+
+```text
+vendor/acme/monolith/composer.json
+vendor/acme/monolith/LICENSE
+vendor/acme/monolith/src/Core/**
+vendor/acme/monolith/src/JavaScript/**
+vendor/acme/monolith/resources/javascript/**
+```
+
+The Lua files and every other unselected path are removed.
+
+#### Mandatory files
+
+The plugin always retains the installed package's root `composer.json` and its
+own marker at `.source-plugin/projection.json`. It also preserves a root
+`.git` directory when Composer installed the package from source, because it is
+VCS metadata rather than author content.
+
+`LICENSE`, `NOTICE`, and `README` are **not** retained implicitly. Include them
+in a base/core surface when they must survive, as the example does for
+`LICENSE`.
+
+#### Lifecycle and projections
+
+Projection runs on Composer's `post-package-install` and
+`post-package-update` events, after the archive is extracted and before the
+autoloader is dumped. A `pre-autoload-dump` pass reconciles packages that were
+not reinstalled, which is what makes narrowing work. No nested Composer
+command is ever executed.
+
+The first Composer run that installs this plugin cannot use it: Composer has not
+activated a plugin it just installed. On a clean project the bootstrap is:
+
+```sh
+composer update   # installs the plugin and the full packages
+composer update   # applies and records projections
+```
+
+The same two-step rule applies to a lock-based clone: the first
+`composer install` installs the plugin and the full packages, and a second
+`composer install` applies the committed projection state.
+
+Projection is plugin-dependent:
+
+- `composer install` and `composer update` project after installation.
+- `composer dump-autoload` validates the committed state and repairs a
+  projected tree for that committed selection, but it cannot restore deleted
+  files or apply an uncommitted selection change.
+- `--dry-run` changes nothing because Composer does not dispatch package or
+  script events for it.
+- `--no-install` resolves only; no package is installed and no projection state
+  is written.
+- `--no-plugins` performs a normal install and leaves the full package in
+  `vendor/`; projection is simply absent.
+- `prefer-dist` is recommended. Source installs are projected too, but the
+  resulting git checkout has deleted tracked files. Composer may then refuse a
+  later source update until `composer reinstall`; the plugin emits a warning.
+
+#### Projection state in composer-source.lock
+
+Projection state lives in `composer-source.lock` beside `composer.json`. It is
+shared with the mirror baseline, so neither feature can erase the other's
+entries. Commit it. Each projection entry records:
+
+- the installed package name (as the map key);
+- the installed reference and version;
+- the selected surface names;
+- the normalized include patterns and their SHA-256 digest;
+- the complete surface-definition digest;
+- a projection format version.
+
+No absolute paths are stored. On `composer install` (and `dump-autoload`) the
+selected surfaces, package reference, include rules, and surface definitions
+must all match the committed entry. A mismatch is an actionable error instead
+of silent drift. On `composer update` valid changes advance the state with an
+atomic rewrite, preserving mirrors and other projected packages.
+
+#### Narrowing, widening, and reinstalling
+
+Narrowing is safe and needs no download:
+
+```json
+["core", "javascript"] -> ["core"]
+```
+
+Widening cannot invent files that a previous projection deleted. If the newly
+selected surface is missing, the plugin fails and tells you to restore the
+archive:
+
+```sh
+composer reinstall acme/monolith
+```
+
+A compatible `composer update` or `composer reinstall` advances the committed
+surface list. A failed widening leaves the previous state untouched.
+
+#### Path and filesystem safety
+
+Before anything is deleted the plugin parses all surfaces, validates every
+selected name, resolves the complete keep/remove plan, and enumerates package
+files. Paths must be package-relative: absolute paths, empty paths, `..`
+traversal, backslashes, colons, and malformed globs are rejected. Any symlink
+that resolves outside the package root aborts the projection, and symlinked
+directories are never traversed. A symlinked package installation (for example
+a `path` repository with `"symlink": true`) is rejected.
+
+The projected tree is built in a sibling staging directory, retained files are
+copied with their permissions, and the completed tree is swapped into place
+atomically. A failure before the swap leaves the original package intact; the
+old tree is removed only after a successful swap. Composer's download cache and
+upstream checkouts are never modified.
+
+#### Autoload and dependency limitations
+
+Package metadata is resolved before projection. Keep the root autoload contract
+valid after optional files disappear:
+
+- PSR-4/PSR-0 mappings may point at selected or absent directories.
+- Unconditional `autoload.files` entries must belong to retained/core files.
+- Optional bootstrap files should be routed through one retained dispatcher
+  that conditionally discovers the selected modules.
+
+The plugin drops in-memory `files`, `classmap`, and `exclude-from-classmap`
+entries whose target no longer exists, so Composer does not try to require a
+deleted file. It does not add module autoloading or dependency solving. The
+containing package must declare its Composer dependencies and autoload
+contract normally; optional third-party packages must be normal requirements,
+suggestions, or a future explicitly designed mechanism. A projection never
+merges a nested `composer.json` and never invents dependencies after the solver
+has run.
+
+#### Conflicts and exclusions
+
+A projection references a concrete installed package and must select at least
+one declared surface. A package without author-declared surfaces cannot be
+projected by name. The plugin package itself cannot be projected.
+
+A package cannot simultaneously be projected and:
+
+- **mirrored** — a mirror synchronizes the full package into a working copy;
+- **a loader** — a loader chooses a package candidate before resolution.
+
+Both combinations are rejected at plugin activation. Namespace aliases are
+allowed and are generated after projection, so only retained classes are
+aliased or rebased.
+
+#### Gateway-shaped example
+
+```json
+{
+    "name": "acme/gateway",
+    "autoload": {
+        "psr-4": { "Acme\\Gateway\\": "src/" }
+    },
+    "extra": {
+        "source-plugin": {
+            "surfaces": {
+                "core": { "include": ["composer.json", "LICENSE", "src/Core/**"] },
+                "reverb": { "include": ["src/Reverb/**", "config/reverb.php"] },
+                "mercure": { "include": ["src/Mercure/**", "config/mercure.php"] },
+                "shell": { "include": ["src/Shell/**", "bin/**"] }
+            }
+        }
+    }
+}
+```
+
+```json
+{
+    "extra": {
+        "source-plugin": {
+            "projections": {
+                "acme/gateway": {
+                    "surfaces": ["core", "reverb", "mercure"]
+                }
+            }
+        }
+    }
+}
+```
+
+The package keeps one root `autoload` contract and routes optional bootstraps
+through retained code. The plugin has no Gateway-specific behavior.
+
+#### Feature comparison
+
+| Feature | What it does |
+| --- | --- |
+| loader | Selects an inline or outline source candidate before resolution. |
+| mirror | Copies and synchronizes an installed dependency into a working tree. |
+| projection | Keeps selected named surfaces from one installed package. |
+| alias / rebase | Changes namespace exposure. |
+| `copy: "autoload"` | Limits copied mirror/rebase content using autoload metadata. |
+
 ### Supported runtimes and verification
 
 The plugin supports PHP 8.1 and later and Composer plugin API 2.3 and later.
@@ -401,6 +662,7 @@ must explicitly allow the plugin:
 ```bash
 composer install
 composer test
+composer test:integration   # requires Docker
 ```
 
 Requires Composer 2 and PHP 8.1 or newer.

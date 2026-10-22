@@ -20,3 +20,6 @@ jobs:
       - run: bash tests/integration/mirror.sh
         env:
           PLUGIN: ${{ github.workspace }}
+      - run: bash tests/integration/projection.sh
+        env:
+          PLUGIN: ${{ github.workspace }}

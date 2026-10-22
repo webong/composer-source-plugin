@@ -53,6 +53,14 @@ final class SourcePluginConfig
         return is_array($aliases) ? $aliases : [];
     }
 
+    /** @return array<string, mixed> */
+    public static function projections(Composer $composer): array
+    {
+        $projections = self::section($composer)['projections'] ?? [];
+
+        return is_array($projections) ? $projections : [];
+    }
+
     /**
      * Validate at plugin activation.
      *
@@ -70,6 +78,11 @@ final class SourcePluginConfig
         if (! in_array(self::section($composer)['mirror-state'] ?? 'local', ['local', 'lock'], true)) {
             throw new InvalidArgumentException('source-plugin.mirror-state must be local or lock.');
         }
-        MirrorConfiguration::parse(self::mirrors($composer), self::loaders($composer));
+
+        $mirrors = self::mirrors($composer);
+        $loaders = self::loaders($composer);
+
+        MirrorConfiguration::parse($mirrors, $loaders);
+        ProjectionConfiguration::parse(self::projections($composer), $mirrors, $loaders);
     }
 }
