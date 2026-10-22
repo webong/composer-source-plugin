@@ -36,12 +36,17 @@
     },
     "scripts": {
         "test": "phpunit --configuration phpunit.xml.dist",
-        "test:integration": "docker run --rm -v \"$PWD:/plugin:ro\" -e COMPOSER_ALLOW_SUPERUSER=1 -e COMPOSER_HOME=/tmp/composer composer:2 bash /plugin/tests/integration/mirror.sh"
+        "test:integration:mirror": "docker run --rm -v \"$PWD:/plugin:ro\" -e COMPOSER_ALLOW_SUPERUSER=1 -e COMPOSER_HOME=/tmp/composer composer:2 bash /plugin/tests/integration/mirror.sh",
+        "test:integration:projection": "docker run --rm -v \"$PWD:/plugin:ro\" -e COMPOSER_ALLOW_SUPERUSER=1 -e COMPOSER_HOME=/tmp/composer composer:2 bash /plugin/tests/integration/projection.sh",
+        "test:integration": [
+            "@test:integration:mirror",
+            "@test:integration:projection"
+        ]
     },
     "config": {
         "sort-packages": true,
         "allow-plugins": {
-        "webong/composer-source-plugin": true
+            "webong/composer-source-plugin": true
         }
     }
 }
