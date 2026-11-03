@@ -283,7 +283,7 @@ Precedence between workspace injection and an explicit loader:
 | `vendor/<pkg>/.source-plugin/projection.json` | Plugin | No | Marker recording what a projection removed. |
 | `vendor/composer/namespace_aliases.php` | Plugin | No | Generated `class_alias` calls. |
 | `vendor/composer/namespace_rebases.php` | Plugin | No | Generated rebase autoloader. |
-| `vendor/composer/source_aliases.php` | Plugin | No | Generated class/interface map for Illuminate. |
+| `vendor/composer/source_aliases.php` | Plugin | No | Generated class/interface map for container integrations. |
 | `vendor/composer/rebased/` | Plugin | No | Generated rebased source trees. |
 
 `composer-source.lock` is named after the manifest: `composer.json` produces

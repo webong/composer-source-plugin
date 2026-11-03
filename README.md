@@ -32,7 +32,7 @@ explicit in `extra.source-plugin`.
 | Choose between a merged local manifest and the published package | [Source selection](docs/source-selection.md) | Removes the losing candidate before Composer resolves the pool. |
 | Patch a dependency and still receive upstream releases | [Mirrors](docs/mirrors.md) | Syncs upstream into an editable working copy, file by file, without overwriting local edits. |
 | Install only selected parts of a package | [Projections](docs/projections.md) | Prunes an installed package to author-declared surfaces and records the selection. |
-| Keep old namespaces working | [Aliases and rebases](docs/aliases.md) | Generates compatibility aliases, rebased source, and a Laravel container bridge. |
+| Keep old namespaces working | [Aliases and rebases](docs/aliases.md) | Generates compatibility aliases, rebased source, and Laravel/Symfony container bridges. |
 
 A package cannot be **mirrored** or **projected** while it is also a loader or a
 workspace; those features compete over where the installed code comes from.
@@ -169,7 +169,7 @@ Nothing is written to your `composer.json` at runtime. The full event map is in
 | [Workspaces](docs/workspaces.md) | Local package linking, version contract, diagnostics. |
 | [Mirrors](docs/mirrors.md) | Upstream sync, conflicts, baselines, mirror rebasing. |
 | [Projections](docs/projections.md) | Surfaces, pruning, widening, autoload limits. |
-| [Aliases and rebases](docs/aliases.md) | Compatibility aliases, source rebasing, Laravel bridge. |
+| [Aliases and rebases](docs/aliases.md) | Compatibility aliases, source rebasing, Laravel and Symfony bridges. |
 | [Lifecycle](docs/lifecycle.md) | Which hook runs on which command. |
 | [Troubleshooting](docs/troubleshooting.md) | Error messages, causes, and fixes. |
 | [Releasing](docs/releasing.md) | Packagist setup and the release workflow. |
@@ -180,8 +180,8 @@ Nothing is written to your `composer.json` at runtime. The full event map is in
 - Composer 2 with plugin API 2.3 or newer.
 - `wikimedia/composer-merge-plugin` is optional; it is only needed when a
   loader's inline source is a separate manifest.
-- Optional Illuminate integration for container aliases; the Composer plugin
-  itself is framework-neutral.
+- Optional Illuminate and Symfony integration for container aliases; the
+  Composer plugin itself is framework-neutral.
 
 ## Development
 

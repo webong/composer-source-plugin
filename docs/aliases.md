@@ -261,7 +261,7 @@ filesystem fallback, and `require_once`s both files when present. It does not
 patch Composer's generated autoloader.
 
 `vendor/composer/source_aliases.php` is different: it returns a PHP array of
-class/interface aliases and is read only by the Illuminate provider.
+class/interface aliases and is read by the optional container integrations.
 
 ## Illuminate container aliases
 
@@ -276,6 +276,57 @@ It reads `vendor/composer/source_aliases.php` relative to the application base
 path. The bridge is optional and is not loaded in non-Illuminate applications.
 The Composer plugin remains framework-neutral; only generated metadata is shared
 with the provider.
+
+## Symfony container aliases
+
+Symfony keys services by string as well, so the same compatibility names help
+when the original class is a registered service and a consumer type-hints the
+alias. `class_alias()` already covers ordinary `new` calls and autowired
+arguments, so most applications need nothing at all.
+
+Register the compiler pass when the source class is a service:
+
+```php
+// src/Kernel.php
+
+use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Webong\ComposerSource\Symfony\ComposerSourceAliasesPass;
+
+protected function build(ContainerBuilder $container): void
+{
+    $container->addCompilerPass(new ComposerSourceAliasesPass());
+}
+```
+
+The pass reads `vendor/composer/source_aliases.php` and registers
+`Legacy\Library\Client -> Acme\Library\Client` for every mapped class or
+interface whose source is a service. It:
+
+- skips mappings whose source is not registered, so container compilation does
+  not fail on a dangling reference;
+- leaves existing definitions and aliases untouched;
+- keeps the source service's public/private visibility;
+- is a no-op when the map is missing, so `--no-scripts` installs still boot.
+
+`symfony/dependency-injection` is only suggested; the pass is never loaded
+unless the application references it. Symfony has no equivalent of Laravel's
+provider auto-discovery, so the pass is registered manually. A bundle can
+register it in its own `build()` method if you ship one.
+
+Because the container is compiled and cached, clear the cache after changing
+`aliases`:
+
+```sh
+composer dump-autoload
+php bin/console cache:clear
+```
+
+For a one-off mapping, `services.yaml` is enough without the pass:
+
+```yaml
+services:
+    Legacy\Library\Client: '@Acme\Library\Client'
+```
 
 ## Commands and regeneration
 

@@ -328,6 +328,18 @@ must run a command that dumps the autoloader with the plugin active. Check
 - `vendor/composer/source_aliases.php` must exist and be non-empty.
 - Clear cached package metadata if discovery ran before the file existed.
 
+### The Symfony compiler pass does not register aliases
+
+- The pass is not auto-registered; add it to `Kernel::build()` or to a bundle's
+  `build()` method.
+- Only class and interface mappings are considered; traits are not exported.
+- The source class must be a registered service when the container is compiled.
+  A class that is only autoloadable needs no alias.
+- Clear the compiled container (`bin/console cache:clear`) after changing
+  `aliases`; the pass runs at compile time, not on every request.
+- A missing `vendor/composer/source_aliases.php` is treated as an empty map, so
+  check that the autoloader was dumped with the plugin active.
+
 ## Lock files
 
 ### Which files should be committed?

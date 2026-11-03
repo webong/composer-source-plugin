@@ -5,8 +5,8 @@ same package can come from more than one place. It answers one question at a
 time — *which copy of this package should Composer build?* — and keeps the
 answer reproducible through `composer.lock` and `composer-source.lock`.
 
-The plugin is framework-neutral. The optional Illuminate provider only exposes
-generated alias metadata to Laravel's container.
+The plugin is framework-neutral. The optional Illuminate provider and Symfony
+compiler pass only expose generated alias metadata to those containers.
 
 ## The five features
 
@@ -94,7 +94,7 @@ Full key-by-key reference, defaults, and validation rules:
 | [Workspaces](./workspaces.md) | Local package linking, version contract, diagnostics, bootstrap. |
 | [Mirrors](./mirrors.md) | Upstream sync, conflicts, project lock, mirror rebasing. |
 | [Projections](./projections.md) | Surfaces, pruning, widening, autoload limits, safety. |
-| [Aliases and rebases](./aliases.md) | Simple aliases, source rebasing, generated files, Laravel bridge. |
+| [Aliases and rebases](./aliases.md) | Simple aliases, source rebasing, generated files, Laravel and Symfony bridges. |
 | [Lifecycle](./lifecycle.md) | Which hook runs on which command, and in what order. |
 | [Troubleshooting](./troubleshooting.md) | Error messages, causes, and fixes. |
 | [Releasing](./releasing.md) | Packagist setup, release workflow, and maintainer checklist. |

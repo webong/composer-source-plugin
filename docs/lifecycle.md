@@ -12,7 +12,7 @@ each command. It is the quickest way to answer "why did nothing happen?" and
 | 2 | `pre-pool-create` | `selectPackageSources()` | Validate workspace versions, then remove losing loader candidates from the pool. |
 | 3 | `post-package-install` / `post-package-update` | `projectPackage()` | Project a configured package immediately after it is installed. |
 | 4 | `pre-autoload-dump` | `beforeAutoloadDump()` | Reconcile projections, then sync mirrors. |
-| 5 | `post-autoload-dump` | `generateAliases()` | Generate simple aliases, rebases, and the Illuminate map. |
+| 5 | `post-autoload-dump` | `generateAliases()` | Generate simple aliases, rebases, and the container alias map. |
 | 6 | `post-install-cmd` / `post-update-cmd` | `finalizeProjections()` | Reconcile fresh packages when no autoload dump occurred. |
 
 Supporting hooks:
