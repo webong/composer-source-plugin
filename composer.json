@@ -9,9 +9,11 @@
     },
     "require-dev": {
         "composer/semver": "^3.0",
-        "phpunit/phpunit": "^10.5 || ^11.0 || ^12.0"
+        "phpunit/phpunit": "^10.5 || ^11.0 || ^12.0",
+        "symfony/dependency-injection": "^6.4 || ^7.0"
     },
     "suggest": {
+        "symfony/dependency-injection": "Register the compiler pass that exposes compatibility names as Symfony service aliases.",
         "wikimedia/composer-merge-plugin": "Merge a local package manifest before the source selector chooses the winning implementation."
     },
     "autoload": {
