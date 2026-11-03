@@ -2,7 +2,26 @@
 
 `webong/composer-source-plugin` selects the winning source when a Composer
 package is available both as an inline merged manifest and as an outline
-package. It also retains the optional namespace-compatibility alias generator.
+package. It also links local package workspaces, mirrors dependencies into
+editable working copies, projects installed packages down to selected surfaces,
+and retains the optional namespace-compatibility alias generator.
+
+## Documentation
+
+This README is the quick tour. The detailed reference lives in
+[`docs/`](docs/README.md):
+
+| Guide | What it covers |
+| --- | --- |
+| [Documentation index](docs/README.md) | Feature chooser, mental model, and first-run rules. |
+| [Configuration](docs/configuration.md) | Every `extra.source-plugin` key, default, and conflict rule. |
+| [Source selection](docs/source-selection.md) | `loaders` and the `inline` / `outline` / `auto` decision. |
+| [Workspaces](docs/workspaces.md) | Local package linking, version contract, and diagnostics. |
+| [Mirrors](docs/mirrors.md) | Upstream sync, conflicts, baselines, and mirror rebasing. |
+| [Projections](docs/projections.md) | Author surfaces, pruning, widening, and autoload limits. |
+| [Aliases and rebases](docs/aliases.md) | Compatibility aliases, source rebasing, and the Laravel bridge. |
+| [Lifecycle](docs/lifecycle.md) | Which hook runs on which command, in what order. |
+| [Troubleshooting](docs/troubleshooting.md) | Error messages, causes, and fixes. |
 
 ## Source selection
 
@@ -29,6 +48,8 @@ The loader type can be:
 - `inline`: the local manifest/path source wins.
 - `outline`: the normal Composer package wins.
 - `auto`: inline wins when the configured manifest exists; otherwise outline wins.
+
+Full reference: [Source selection](docs/source-selection.md).
 
 The plugin removes the losing package candidate before Composer resolves the
 dependency pool. When the outline source wins, it also removes the inline
@@ -89,6 +110,7 @@ supported:
 
 A mirror keeps a working copy of an installed dependency at a path in your
 repository, and syncs upstream into it whenever you run `composer update`.
+Full reference: [Mirrors](docs/mirrors.md).
 
 Configure it under `extra.source-plugin.mirrors`:
 
@@ -228,6 +250,11 @@ Two limits are worth stating plainly:
 to the same protection: edit it freely, and an upstream change to it shows up
 as a conflict rather than clobbering your edits.
 
+The sync runs on `pre-autoload-dump`, immediately before the autoloader is
+generated, so a `rebase` always reads post-sync sources. A failing sync warns
+and never aborts the install. A Composer plugin cannot act on the run that
+first installs it, so the first `composer update` only installs the plugin.
+
 ### Rebase copy policy
 
 Existing aliases keep the whole-package copy policy and package-relative layout.
@@ -280,6 +307,8 @@ file-level behavior. Composer's package name is unchanged.
 A **surface** is a named group of files declared by a package author. A
 **projection** is a consumer's selection of surfaces from one normally
 installed package.
+
+Full reference: [Projections](docs/projections.md).
 
 Composer downloads the package's **complete dist/source archive** as usual.
 The plugin then removes every unselected file from the installed copy, so
@@ -568,6 +597,8 @@ dependency. Declare the roots once in the consuming root `composer.json`:
 }
 ```
 
+Full reference: [Workspaces](docs/workspaces.md).
+
 Every matched directory must contain a `composer.json` with a `name`. At plugin
 activation the plugin prepends a canonical `path` repository for each one, so
 Composer resolves the local copy before Packagist or a VCS repository. There is
@@ -699,16 +730,11 @@ within a minute after receiving the webhook.
 The workflow only releases the commit checked out from `main`. A failed test or
 existing tag stops before anything is published.
 
-The sync runs on `pre-autoload-dump`, immediately before the autoloader is
-generated, so a `rebase` always reads post-sync sources. A failing sync warns
-and never aborts the install. Note that a Composer plugin cannot act on the
-run that first installs it, so the first `composer update` only installs the
-plugin.
-
 ## Unified configuration
 
 Package source selection and namespace aliases are configured together under
-`extra.source-plugin`:
+`extra.source-plugin`. Every key and its defaults are documented in
+[Configuration](docs/configuration.md):
 
 ```json
 {
@@ -742,7 +768,8 @@ creates PHP compatibility aliases. A package-scoped mapping can set
 production classes, interfaces, traits, and enums in installed packages and
 writes simple aliases during Composer's autoload generation. It also writes
 the production class/interface aliases to
-`vendor/composer/source_aliases.php` for runtime integrations.
+`vendor/composer/source_aliases.php` for runtime integrations. Full reference:
+[Aliases and rebases](docs/aliases.md).
 
 ### Illuminate container aliases
 
