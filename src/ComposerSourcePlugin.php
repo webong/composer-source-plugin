@@ -8,14 +8,17 @@ use Composer\Composer;
 use Composer\Installer\PackageEvent;
 use Composer\Installer\PackageEvents;
 use Composer\IO\IOInterface;
+use Composer\Plugin\Capable;
+use Composer\Plugin\Capability\CommandProvider as CommandProviderCapability;
 use Composer\Plugin\CommandEvent;
 use Composer\Plugin\PluginEvents;
 use Composer\Plugin\PluginInterface;
 use Composer\Script\Event;
 use Composer\Script\ScriptEvents;
 use Composer\EventDispatcher\EventSubscriberInterface;
+use Webong\ComposerSource\Command\CommandProvider;
 
-final class ComposerSourcePlugin implements PluginInterface, EventSubscriberInterface
+final class ComposerSourcePlugin implements PluginInterface, EventSubscriberInterface, Capable
 {
     private ?Composer $composer = null;
 
@@ -33,9 +36,28 @@ final class ComposerSourcePlugin implements PluginInterface, EventSubscriberInte
         $this->composer = $composer;
         $this->io = $io;
 
-        // Fail loudly and early on a contradictory configuration, before any
-        // command mutates the dependency pool.
-        SourcePluginConfig::assertValid($composer);
+        // Structural configuration is rejected at activation, before any
+        // command mutates the dependency pool. Version compatibility is a
+        // resolution concern and is checked in selectPackageSources().
+        $workspaces = WorkspaceConfiguration::discover($composer);
+        SourcePluginConfig::assertValid($composer, $workspaces);
+
+        // Canonical path repositories make the local copy win over the
+        // registry, like an npm workspace link. Nothing is written to the
+        // consumer's composer.json.
+        WorkspaceRepository::prepend(
+            $composer,
+            $io,
+            WorkspaceConfiguration::active($workspaces, SourcePluginConfig::loaders($composer)),
+        );
+    }
+
+    /**
+     * @return array<string, class-string>
+     */
+    public function getCapabilities(): array
+    {
+        return [CommandProviderCapability::class => CommandProvider::class];
     }
 
     public function deactivate(Composer $composer, IOInterface $io): void
@@ -95,6 +117,12 @@ final class ComposerSourcePlugin implements PluginInterface, EventSubscriberInte
         if (! $this->composer instanceof Composer || ! $this->io instanceof IOInterface || ! method_exists($event, 'getPackages')) {
             return;
         }
+
+        $workspaces = WorkspaceConfiguration::discover($this->composer);
+        WorkspaceConfiguration::assertSatisfiable(
+            WorkspaceConfiguration::composerRequires($this->composer),
+            WorkspaceConfiguration::active($workspaces, SourcePluginConfig::loaders($this->composer)),
+        );
 
         (new PackageSourceSelector($this->composer, $this->io))->select($event);
     }

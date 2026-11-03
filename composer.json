@@ -8,6 +8,7 @@
         "composer-plugin-api": ">=2.3"
     },
     "require-dev": {
+        "composer/semver": "^3.0",
         "phpunit/phpunit": "^10.5 || ^11.0 || ^12.0"
     },
     "suggest": {
@@ -38,9 +39,11 @@
         "test": "phpunit --configuration phpunit.xml.dist",
         "test:integration:mirror": "docker run --rm -v \"$PWD:/plugin:ro\" -e COMPOSER_ALLOW_SUPERUSER=1 -e COMPOSER_HOME=/tmp/composer composer:2 bash /plugin/tests/integration/mirror.sh",
         "test:integration:projection": "docker run --rm -v \"$PWD:/plugin:ro\" -e COMPOSER_ALLOW_SUPERUSER=1 -e COMPOSER_HOME=/tmp/composer composer:2 bash /plugin/tests/integration/projection.sh",
+        "test:integration:workspaces": "docker run --rm -v \"$PWD:/plugin:ro\" -e COMPOSER_ALLOW_SUPERUSER=1 -e COMPOSER_HOME=/tmp/composer composer:2 bash /plugin/tests/integration/workspaces.sh",
         "test:integration": [
             "@test:integration:mirror",
-            "@test:integration:projection"
+            "@test:integration:projection",
+            "@test:integration:workspaces"
         ]
     },
     "config": {

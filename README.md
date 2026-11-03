@@ -531,6 +531,7 @@ through retained code. The plugin has no Gateway-specific behavior.
 | Feature | What it does |
 | --- | --- |
 | loader | Selects an inline or outline source candidate before resolution. |
+| workspace | Links a local package directory as the canonical source for its own name. |
 | mirror | Copies and synchronizes an installed dependency into a working tree. |
 | projection | Keeps selected named surfaces from one installed package. |
 | alias / rebase | Changes namespace exposure. |
@@ -546,6 +547,121 @@ version independently.
 For isolated local verification, build `tests/integration/Dockerfile` with
 `--build-arg PHP_VERSION=8.1` (or another supported version), then run the image.
 It runs both unit tests and the throwaway Composer integration harness.
+
+## Workspaces
+
+A workspace is a local package directory that becomes the canonical source for
+its own package name, the way an npm workspace link replaces a registry
+dependency. Declare the roots once in the consuming root `composer.json`:
+
+```json
+{
+    "require": {
+        "webong/composer-source-plugin": "^1.0",
+        "acme/core": "@dev"
+    },
+    "extra": {
+        "source-plugin": {
+            "workspaces": ["packages/*", "plugins/*"]
+        }
+    }
+}
+```
+
+Every matched directory must contain a `composer.json` with a `name`. At plugin
+activation the plugin prepends a canonical `path` repository for each one, so
+Composer resolves the local copy before Packagist or a VCS repository. There is
+**no manifest rewriting and no `wikimedia/composer-merge-plugin` requirement**:
+
+- `vendor/acme/core` is a symlink to `packages/core`, so edits are live;
+- sibling requirements between workspaces resolve locally as well;
+- `composer.lock` records a relative `dist.url`, so the lock stays portable;
+- the published package remains the source of truth for consumers outside the
+  monorepo.
+
+`workspaces` accepts a list of globs, or an object for exclusions and copying:
+
+```json
+{
+    "workspaces": {
+        "include": ["packages/*"],
+        "exclude": ["packages/legacy"],
+        "symlink": false
+    }
+}
+```
+
+`*`, `?`, `[...]` character classes, and a trailing `/**` are supported. Patterns
+must be package-relative. A glob that matches nothing is ignored; a literal path
+that does not exist, or a matched directory without a `composer.json`, is an
+actionable error.
+
+### Workspace versions
+
+Composer has no `workspace:` protocol — its parser rejects that literal before
+plugins activate — so the version contract is explicit:
+
+| Root requirement | Behaviour |
+| --- | --- |
+| `"acme/core": "@dev"` or `"*"` | Local workspace always satisfies it; `version` is optional. |
+| `"acme/core": "^2.0"` | The workspace must declare `version`, and it must satisfy the range. |
+| Mismatch | The plugin fails before the solver with the local and required versions. |
+
+A semver requirement without a workspace `version` is an error rather than a
+silent fallback. Sibling requirements inside workspace manifests are validated
+the same way.
+
+### Opting a package back to the published version
+
+An explicit loader entry wins over the workspace injection:
+
+```json
+{
+    "extra": {
+        "source-plugin": {
+            "workspaces": ["packages/*"],
+            "loaders": {
+                "acme/core": { "type": "outline" }
+            }
+        }
+    }
+}
+```
+
+That package is installed from its repository instead of being linked, and its
+local version is not validated.
+
+### Inspecting the resolved set
+
+`composer source:workspaces` lists every workspace with its path, version, and
+whether it is `linked` or `outline`, plus sibling requirements between
+workspaces. Add `--json` for tooling. It exits non-zero and prints every
+unsatisfiable requirement in one pass, so it is usable for diagnosis even when
+`composer update` would stop at the first problem.
+
+### Bootstrapping
+
+A Composer plugin cannot act on the run that installs it. Install the plugin
+first, then enable workspaces:
+
+```sh
+composer update   # installs webong/composer-source-plugin
+composer update   # links the workspaces
+```
+
+For consumers and CI, a committed `composer.lock` is enough: it records the
+workspace packages with a relative `path` dist, and `composer install` recreates
+the links even with `--no-plugins`. Run `composer update` with plugins enabled
+whenever the workspace set or versions change.
+
+### Workspace limits
+
+- A workspace package cannot also be `mirrored` or `projected`; both are rejected
+  at activation because they need the registry package to stay installed.
+- `composer install --no-plugins` (or a missing `allow-plugins` entry) does not
+  inject the workspaces and falls back to the repository versions.
+- Workspaces are resolution only. They are not a task runner, a version bumper,
+  or a publishing tool.
 
 ## Installing from Packagist
 

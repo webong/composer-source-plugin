@@ -14,4 +14,4 @@ COPY composer.json phpunit.xml.dist README.md ./
 COPY src ./src
 COPY tests ./tests
 RUN composer update --no-interaction --prefer-dist --no-progress --no-plugins --no-scripts
-CMD ["sh", "-c", "composer test && bash tests/integration/mirror.sh && bash tests/integration/projection.sh"]
+CMD ["sh", "-c", "composer test && bash tests/integration/mirror.sh && bash tests/integration/projection.sh && bash tests/integration/workspaces.sh"]

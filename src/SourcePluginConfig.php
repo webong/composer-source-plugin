@@ -46,6 +46,20 @@ final class SourcePluginConfig
     }
 
     /** @return array<string, mixed> */
+    public static function workspaces(Composer $composer): array
+    {
+        $workspaces = self::section($composer)['workspaces'] ?? [];
+
+        if (! is_array($workspaces)) {
+            throw new InvalidArgumentException(
+                'source-plugin.workspaces must be a list of package globs or an object with an "include" list.',
+            );
+        }
+
+        return $workspaces;
+    }
+
+    /** @return array<string, mixed> */
     public static function aliases(Composer $composer): array
     {
         $aliases = self::section($composer)['aliases'] ?? [];
@@ -71,16 +85,23 @@ final class SourcePluginConfig
      * loader has already deselected the package and Composer reports a
      * confusing conflict instead.
      *
+     * Workspaces are treated as loaders here: they replace the registry package
+     * with a local source of truth, so a mirror or projection cannot apply.
+     *
+     * @param array<string, WorkspaceDefinition> $workspaces
+     *
      * @throws InvalidArgumentException
      */
-    public static function assertValid(Composer $composer): void
+    public static function assertValid(Composer $composer, array $workspaces = []): void
     {
         if (! in_array(self::section($composer)['mirror-state'] ?? 'local', ['local', 'lock'], true)) {
             throw new InvalidArgumentException('source-plugin.mirror-state must be local or lock.');
         }
 
         $mirrors = self::mirrors($composer);
-        $loaders = self::loaders($composer);
+
+        // Explicit loader entries win over the generated workspace ones.
+        $loaders = self::loaders($composer) + WorkspaceConfiguration::loaderConfiguration($workspaces);
 
         MirrorConfiguration::parse($mirrors, $loaders);
         ProjectionConfiguration::parse(self::projections($composer), $mirrors, $loaders);
