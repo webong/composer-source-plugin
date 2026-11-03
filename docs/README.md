@@ -97,6 +97,7 @@ Full key-by-key reference, defaults, and validation rules:
 | [Aliases and rebases](./aliases.md) | Simple aliases, source rebasing, generated files, Laravel bridge. |
 | [Lifecycle](./lifecycle.md) | Which hook runs on which command, and in what order. |
 | [Troubleshooting](./troubleshooting.md) | Error messages, causes, and fixes. |
+| [Releasing](./releasing.md) | Packagist setup, release workflow, and maintainer checklist. |
 
 ## Requirements
 
