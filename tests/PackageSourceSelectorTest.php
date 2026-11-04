@@ -15,7 +15,7 @@ final class PackageSourceSelectorTest extends TestCase
         self::assertStringContainsString('`inline`', $readme);
         self::assertStringContainsString('`outline`', $readme);
         self::assertStringContainsString('`auto`', $readme);
-        self::assertStringContainsString('zorvia/web-proxy', $readme);
+        self::assertStringContainsString('sprocket/web-proxy', $readme);
         self::assertStringContainsString('"loaders"', $readme);
         self::assertStringContainsString('"type": "auto"', $readme);
         self::assertStringNotContainsString('"preference"', $readme);

@@ -108,7 +108,7 @@ which copy survives:
     "require": {
         "webong/composer-source-plugin": "^1.0",
         "wikimedia/composer-merge-plugin": "^2.1",
-        "zorvia/web-proxy": "@dev"
+        "sprocket/web-proxy": "@dev"
     },
     "extra": {
         "merge-plugin": {
@@ -116,7 +116,7 @@ which copy survives:
         },
         "source-plugin": {
             "loaders": {
-                "zorvia/web-proxy": {
+                "sprocket/web-proxy": {
                     "type": "auto",
                     "path": "ext/web-proxy",
                     "manifest": "ext/web-proxy/composer.json"
