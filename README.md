@@ -38,6 +38,14 @@ A package cannot be **mirrored** or **projected** while it is also a loader or a
 workspace; those features compete over where the installed code comes from.
 Aliases compose with all of them.
 
+## Discover surfaces without file inventories
+
+Since 0.5.0, authors can declare `"surfaces": ["src/composer.json", "ext/*/composer.json"]`. Mark each local manifest with `extra.source-plugin.surface`; its directory supplies the files, and `extends` composes groups. Existing explicit surface maps remain compatible. See [directory-owned surfaces](docs/projections.md#directory-owned-surfaces-since-050).
+
+## Publish multiple packages from one repository
+
+The initial [publication and Packagist catalog workflow](docs/publication.md) reuses workspace declarations to split package-root branches, tag releases and generate `dist/composer/composer-packages.json`. A catalog package on Packagist can advertise that index: consumers run `composer source:catalog vendor/catalog:^1` once, then use ordinary `composer require` entries without per-package `extra` configuration. This is metadata discovery through Packagist, not automatic Packagist indexing of subdirectories. These commands require plugin 0.5.0 or newer.
+
 ## Install
 
 ```sh
@@ -68,7 +76,7 @@ manifest (the plugin requirement is included for completeness):
 ```json
 {
     "require": {
-        "webong/composer-source-plugin": "^1.0",
+        "webong/composer-source-plugin": "^0.5",
         "acme/core": "@dev"
     },
     "extra": {
@@ -106,7 +114,7 @@ which copy survives:
 ```json
 {
     "require": {
-        "webong/composer-source-plugin": "^1.0",
+        "webong/composer-source-plugin": "^0.5",
         "wikimedia/composer-merge-plugin": "^2.1",
         "sprocket/web-proxy": "@dev"
     },

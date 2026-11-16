@@ -28,3 +28,9 @@ jobs:
       - run: bash tests/integration/projection.sh
         env:
           PLUGIN: ${{ github.workspace }}
+      - run: bash tests/integration/publication.sh
+        env:
+          PLUGIN: ${{ github.workspace }}
+      - run: bash tests/integration/surface-discovery.sh
+        env:
+          PLUGIN: ${{ github.workspace }}

@@ -9,7 +9,7 @@ After the package has been released, consumers can install a stable version
 without declaring a VCS repository:
 
 ```sh
-composer require --dev webong/composer-source-plugin:^1.0
+composer require --dev webong/composer-source-plugin:^0.5
 ```
 
 ## One-time Packagist setup

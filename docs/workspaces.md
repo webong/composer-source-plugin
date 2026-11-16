@@ -29,7 +29,7 @@ registry or VCS repository.
 ```json
 {
     "require": {
-        "webong/composer-source-plugin": "^1.0",
+        "webong/composer-source-plugin": "^0.5",
         "acme/core": "@dev"
     },
     "extra": {

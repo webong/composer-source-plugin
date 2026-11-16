@@ -66,7 +66,7 @@ root package before the plugin runs:
 ```json
 {
     "require": {
-        "webong/composer-source-plugin": "^1.0",
+        "webong/composer-source-plugin": "^0.5",
         "wikimedia/composer-merge-plugin": "^2.1"
     },
     "extra": {

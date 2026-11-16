@@ -45,8 +45,12 @@
         "test:integration": [
             "@test:integration:mirror",
             "@test:integration:projection",
-            "@test:integration:workspaces"
-        ]
+            "@test:integration:workspaces",
+            "@test:integration:publication",
+            "@test:integration:surface-discovery"
+        ],
+        "test:integration:publication": "bash tests/integration/publication.sh",
+        "test:integration:surface-discovery": "bash tests/integration/surface-discovery.sh"
     },
     "config": {
         "sort-packages": true,

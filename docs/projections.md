@@ -21,6 +21,50 @@ Packagist does not serve partial archives, so projection does **not** reduce
 network transfer. It reduces the installed tree and the files exposed to the
 application.
 
+## Directory-owned surfaces (since 0.5.0)
+
+Discover groups through manifest globs instead of listing their runtime files:
+
+```json
+{
+  "extra": {
+    "source-plugin": {
+      "surfaces": ["src/composer.json", "ext/*/composer.json"]
+    }
+  }
+}
+```
+
+`src/composer.json` identifies the core directory:
+
+```json
+{"extra": {"source-plugin": {"surface": {"name": "core"}}}}
+```
+
+`ext/Laravel/composer.json` can inherit it and exclude development files:
+
+```json
+{
+  "extra": {
+    "source-plugin": {
+      "surface": {"extends": "core", "exclude": ["tests"]}
+    }
+  }
+}
+```
+
+The surface defaults to the directory name in lowercase with camel-case word breaks (`Laravel` becomes `laravel`, `OpenWorkflow` becomes `open-workflow`). `"surface": true` is the shortest marker. An object can override `name`, declare `extends` as one name or a list, and optionally specify `include`/`exclude` patterns. Unmarked nested Composer manifests are ignored. The matching manifest itself must be a regular file; linked descriptors and unsafe package links are rejected.
+
+By default the complete owning directory is included recursively, so resources, config and the local manifest travel with its code. Optional `include` **replaces** that default with selected paths relative to the owning directory. `exclude` subtracts paths from that directory. Neither permits escaping with `../`. Use inheritance to combine groups rather than reaching into sibling directories. Broad owning directories also include any nested groups beneath them; prefer disjoint roots or narrow an explicit include list when that is unwanted. Shared CLI/providers/resources outside a group's directory still need their own grouping or an explicit file-based definition; discovery does not infer runtime dependency closures.
+
+Inheritance resolves before projection; parent includes and exclusions are inherited, with duplicates removed and patterns sorted. A parent's exclusions continue to apply in a derived surface. Exclusions apply within each selected surface, not as a global veto: a different selected surface can explicitly retain the same file. Unknown parents, cycles, duplicate names and inheritance beyond 128 levels fail before pruning. Globs use the include-pattern syntax below. Missing literal manifests are errors; unmatched wildcard patterns are ignored provided another marked group is discovered. The root `composer.json` cannot itself be a discovered surface.
+
+All discovered surface descriptors are retained as metadata, including unselected groups' descriptors, so a later locked install can reconstruct the full definition set and diagnose widening. Excluded runtime code remains pruned. Expanded definitions and exclusions participate in lock validation; existing include-only definitions retain their original digests. Changes require the normal intentional update/reinstall workflow, not silent lock mutation.
+
+These are **grouping manifests**, not automatically merged packages. Nested `require`, `autoload`, `bin`, `scripts`, `repositories`, Laravel discovery metadata and config are not merged or executed. The root package still owns the Composer contract; consumers install integration dependencies normally. Independent packages use the separate [workspace publisher](publication.md). Keep the descriptors in release archives and use plugin 0.5.0 or newer; release 0.4 does not understand this new format. A package author adding the plugin to `require-dev` does not upgrade a consumer's runtime plugin.
+
+The root `surfaces` value supports either this list of manifest patterns or the compatible named map below. Consumer `projections` syntax is unchanged.
+
 ## Author configuration
 
 Surfaces are declared in the package's own root `composer.json`, under
@@ -47,9 +91,20 @@ Surfaces are declared in the package's own root `composer.json`, under
 }
 ```
 
-A surface must declare at least one include path. Surface names may contain
+An explicit surface must resolve to at least one include path, directly or through inheritance. Surface names may contain
 letters, digits, dots, dashes, and underscores, and must start with a letter or
 digit.
+
+Named maps also accept list shorthand and inheritance:
+
+```json
+{
+  "core": ["src", "bin/workflow", "LICENSE"],
+  "laravel": {"extends": "core", "include": ["ext/Laravel"], "exclude": ["ext/Laravel/tests"]}
+}
+```
+
+Unlike discovered manifests, named-map paths are relative to the package root. The existing `{ "include": [...] }` form stays supported. `composer.json` is always retained automatically.
 
 ## Include patterns
 
@@ -83,7 +138,7 @@ The complete allowlist is resolved before anything on disk is changed.
 ```json
 {
     "require": {
-        "webong/composer-source-plugin": "^1.0",
+        "webong/composer-source-plugin": "^0.5",
         "acme/monolith": "^1.0"
     },
     "extra": {
@@ -198,7 +253,7 @@ Each projection entry records:
 | `surfaces` | Selected surface names, sorted. |
 | `patterns` | Complete normalized include list, including `composer.json`. |
 | `patterns_digest` | SHA-256 of the newline-joined pattern list. |
-| `definition_digest` | SHA-256 of **all** declared surfaces and their include lists. |
+| `definition_digest` | SHA-256 of **all** expanded surface definitions, including exclusions and retained descriptor paths when used. |
 
 No absolute paths are stored. On `composer install` and `composer dump-autoload`
 these values must match the committed entry exactly. A missing entry or a

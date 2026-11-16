@@ -54,7 +54,7 @@ Everything lives under `extra.source-plugin` in the consuming root
 ```json
 {
     "require": {
-        "webong/composer-source-plugin": "^1.0",
+        "webong/composer-source-plugin": "^0.5",
         "acme/core": "@dev",
         "acme/fluent": "^2.0"
     },
@@ -151,3 +151,5 @@ composer install
 composer test                 # unit tests
 composer test:integration     # Docker-based Composer fixtures
 ```
+
+See [Publication and Packagist catalogs](publication.md) for the initial generic split/index publisher and one-time catalog registration command.

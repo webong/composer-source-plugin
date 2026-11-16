@@ -318,7 +318,7 @@ another, and keeps an old namespace working:
 {
     "name": "acme/application",
     "require": {
-        "webong/composer-source-plugin": "^1.0",
+        "webong/composer-source-plugin": "^0.5",
         "acme/core": "@dev",
         "acme/fluent": "^2.0",
         "acme/monolith": "^1.0"
@@ -350,3 +350,7 @@ another, and keeps an old namespace working:
 ```
 
 Remember the first-run rule: install the plugin before enabling the rest.
+
+## Author surface discovery (since 0.5.0)
+
+`extra.source-plugin.surfaces` accepts either a named surface map or a list of manifest patterns such as `["src/composer.json", "ext/*/composer.json"]`. Each matched descriptor must opt in with `extra.source-plugin.surface: true` or an object containing optional `name`, `extends`, `include`, and `exclude`. See [directory-owned surfaces](projections.md#directory-owned-surfaces-since-050) for naming, relative-path, inheritance, exclusion and metadata-retention rules. This does not change consumer projection selection or merge nested Composer requirements.

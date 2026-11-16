@@ -68,7 +68,12 @@ final class ProjectionPlanner
             ));
         }
 
-        $patterns = self::MANDATORY_FILES;
+        $mandatory = self::MANDATORY_FILES;
+        foreach ($this->surfaces as $definition) {
+            $mandatory = array_merge($mandatory, $definition->manifests);
+        }
+        $mandatory = array_values(array_unique($mandatory));
+        $patterns = $mandatory;
         foreach ($surfaces as $name) {
             $patterns = array_merge($patterns, $this->surfaces[$name]->include);
         }
@@ -78,12 +83,12 @@ final class ProjectionPlanner
         $this->assertWideningIsMaterializable($surfaces, $previousMarker, $freshInstall);
 
         $files = PackageFileInventory::files($this->packageRoot);
-        foreach (self::MANDATORY_FILES as $mandatory) {
-            if (! in_array($mandatory, $files, true)) {
+        foreach ($mandatory as $mandatoryFile) {
+            if (! in_array($mandatoryFile, $files, true)) {
                 throw new RuntimeException(sprintf(
                     'Installed package [%s] is missing its mandatory file [%s].',
                     $this->package,
-                    $mandatory,
+                    $mandatoryFile,
                 ));
             }
         }
@@ -91,19 +96,26 @@ final class ProjectionPlanner
         $keep = [];
         $remove = [];
         foreach ($files as $file) {
-            if (IncludePattern::matchesAny($patterns, $file)) {
+            $selectedBySurface = false;
+            foreach ($surfaces as $name) {
+                if ($this->surfaces[$name]->matches($file)) {
+                    $selectedBySurface = true;
+                    break;
+                }
+            }
+            if (in_array($file, $mandatory, true) || $selectedBySurface) {
                 $keep[] = $file;
             } else {
                 $remove[] = $file;
             }
         }
 
-        foreach (self::MANDATORY_FILES as $mandatory) {
-            if (! in_array($mandatory, $keep, true)) {
-                $keep[] = $mandatory;
+        foreach ($mandatory as $mandatoryFile) {
+            if (! in_array($mandatoryFile, $keep, true)) {
+                $keep[] = $mandatoryFile;
                 $remove = array_values(array_filter(
                     $remove,
-                    static fn (string $path): bool => $path !== $mandatory,
+                    static fn (string $path): bool => $path !== $mandatoryFile,
                 ));
             }
         }
@@ -124,7 +136,14 @@ final class ProjectionPlanner
         $removed = array_values(array_unique(array_merge($previousRemoved, $remove)));
         sort($removed);
 
-        $patternsDigest = hash('sha256', implode("\n", $patterns));
+        $exclusions = [];
+        foreach ($surfaces as $name) {
+            if ($this->surfaces[$name]->exclude !== []) {
+                $exclusions[$name] = $this->surfaces[$name]->exclude;
+            }
+        }
+        $patternsDigest = hash('sha256', implode("\n", $patterns)
+            . ($exclusions === [] ? '' : "\n".json_encode($exclusions, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)));
         $definitionDigest = SurfaceConfiguration::digest($this->surfaces);
 
         $marker = ProjectionMarker::create(
@@ -182,18 +201,16 @@ final class ProjectionPlanner
             return;
         }
 
-        $includes = [];
-        foreach ($newlySelected as $name) {
-            $includes = array_merge($includes, $this->surfaces[$name]->include);
-        }
-
         $missing = [];
         foreach ($removed as $path) {
             if (! is_string($path) || $path === '') {
                 throw new RuntimeException('Invalid projection marker: removed must contain relative paths.');
             }
-            if (IncludePattern::matchesAny($includes, $path)) {
-                $missing[] = $path;
+            foreach ($newlySelected as $name) {
+                if ($this->surfaces[$name]->matches($path)) {
+                    $missing[] = $path;
+                    break;
+                }
             }
         }
 

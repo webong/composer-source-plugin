@@ -78,7 +78,7 @@ final class SurfaceConfigurationTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('unsupported key');
 
-        SurfaceConfiguration::parse(['core' => ['include' => ['src/Core/**'], 'exclude' => ['src/Core/Tests']]]);
+        SurfaceConfiguration::parse(['core' => ['include' => ['src/Core/**'], 'unsupported' => ['src/Core/Tests']]]);
     }
 
     public function testSurfaceNamesAreValidated(): void
