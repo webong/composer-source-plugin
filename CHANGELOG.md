@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Fix committed workspace discovery when nested Composer manifests create their parent directories first.
+- Support publishing Composer-plugin workspace packages without losing plugin metadata or binaries.
+- Add opt-in short publication refs and a metadata filename alias for existing publisher migrations.
+- Retain exact stable index records, historical source/dist identities, and legacy index URLs; reject ambiguous versions, conflicting aliases and immutable-reference changes.
+
 ## 0.5.0 — 2026-11-16
 
 - Discover directory-owned surface groups through nested Composer manifest globs. Add surface inheritance, naming overrides, include-list shorthand and scoped exclusions while preserving existing include-only lock digests.

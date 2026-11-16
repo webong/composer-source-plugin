@@ -15,4 +15,4 @@ COPY src ./src
 COPY bin ./bin
 COPY tests ./tests
 RUN composer update --no-interaction --prefer-dist --no-progress --no-plugins --no-scripts
-CMD ["sh", "-c", "composer test && bash tests/integration/mirror.sh && bash tests/integration/projection.sh && bash tests/integration/workspaces.sh && bash tests/integration/publication.sh && bash tests/integration/surface-discovery.sh"]
+CMD ["sh", "-c", "composer test && bash tests/integration/mirror.sh && bash tests/integration/projection.sh && bash tests/integration/workspaces.sh && bash tests/integration/publication.sh && bash tests/integration/surface-discovery.sh && bash tests/integration/publication-migration.sh"]

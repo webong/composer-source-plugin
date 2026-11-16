@@ -47,10 +47,12 @@
             "@test:integration:projection",
             "@test:integration:workspaces",
             "@test:integration:publication",
-            "@test:integration:surface-discovery"
+            "@test:integration:surface-discovery",
+            "@test:integration:publication-migration"
         ],
         "test:integration:publication": "bash tests/integration/publication.sh",
-        "test:integration:surface-discovery": "bash tests/integration/surface-discovery.sh"
+        "test:integration:surface-discovery": "bash tests/integration/surface-discovery.sh",
+        "test:integration:publication-migration": "bash tests/integration/publication-migration.sh"
     },
     "config": {
         "sort-packages": true,

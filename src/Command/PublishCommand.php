@@ -18,7 +18,7 @@ final class PublishCommand extends BaseCommand
         $this->setName('source:publish')
             ->setDescription('Split committed workspaces and generate a standard Composer repository.')
             ->addArgument('action', InputArgument::OPTIONAL, 'list, split, metadata, release or verify', 'list');
-        foreach (['repo', 'ref', 'remote', 'source-url', 'dist-url', 'metadata-branch', 'out-dir', 'release-version'] as $option) {
+        foreach (['repo', 'ref', 'remote', 'source-url', 'dist-url', 'metadata-branch', 'metadata-alias', 'ref-names', 'out-dir', 'release-version'] as $option) {
             $this->addOption($option, null, InputOption::VALUE_REQUIRED, 'Publication '.$option.'.');
         }
         foreach (['push', 'dry-run', 'force-branches', 'no-metadata-branch', 'composer'] as $option) {
@@ -29,7 +29,7 @@ final class PublishCommand extends BaseCommand
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $arguments = ['source:publish', (string) $input->getArgument('action')];
-        foreach (['repo', 'ref', 'remote', 'source-url', 'dist-url', 'metadata-branch', 'out-dir', 'release-version'] as $option) {
+        foreach (['repo', 'ref', 'remote', 'source-url', 'dist-url', 'metadata-branch', 'metadata-alias', 'ref-names', 'out-dir', 'release-version'] as $option) {
             if ($input->getOption($option) !== null) {
                 $arguments[] = '--'.($option === 'release-version' ? 'version' : $option).'='.$input->getOption($option);
             }

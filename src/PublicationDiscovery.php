@@ -45,7 +45,10 @@ final class PublicationDiscovery
                 if (++$count > 10000) {
                     throw new PublicationException('Publication exceeds 10000 manifests.');
                 }
-                mkdir(dirname($root.'/'.$path), 0700, true);
+                $directory = dirname($root.'/'.$path);
+                if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
+                    throw new PublicationException('Cannot materialize workspace manifest directory: '.$path);
+                }
                 file_put_contents($root.'/'.$path, $git->out(['show', $commit.':'.$path]));
             }
             $packages = [];
@@ -55,8 +58,8 @@ final class PublicationDiscovery
                 if (($data['type'] ?? 'library') === 'project') {
                     continue;
                 }
-                if (($data['type'] ?? 'library') !== 'library' && ($data['type'] ?? '') !== 'metapackage') {
-                    throw new PublicationException('Initial publication supports library and metapackage packages only.');
+                if (! in_array($data['type'] ?? 'library', ['library', 'metapackage', 'composer-plugin'], true)) {
+                    throw new PublicationException('Publication supports library, metapackage and composer-plugin packages only.');
                 }
                 foreach ($paths as $path) {
                     if (str_starts_with($workspace->path.'/', $path.'/') || str_starts_with($path.'/', $workspace->path.'/')) {

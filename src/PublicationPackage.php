@@ -11,13 +11,14 @@ final class PublicationPackage
         public readonly string $name,
         public readonly string $path,
         public readonly array $manifest,
+        public readonly string $refNames = 'full',
     ) {
     }
 
-    /** Full identity prevents cross-vendor branch and tag collisions. */
+    /** Full identity is the default; short refs are an explicit migration mode. */
     public function short(): string
     {
-        return $this->name;
+        return $this->refNames === 'short' ? substr($this->name, (int) strpos($this->name, '/') + 1) : $this->name;
     }
 
     public function branch(): string

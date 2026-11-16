@@ -8,11 +8,13 @@ final class PackagePublisher
 {
     private const ROOT_ONLY_KEYS = ['require-dev', 'autoload-dev', 'repositories', 'config', 'scripts', 'scripts-descriptions', 'minimum-stability', 'prefer-stable', 'version'];
 
-    private const OPTIONS = ['repo', 'ref', 'remote', 'source-url', 'dist-url', 'metadata-branch', 'out-dir', 'push', 'dry-run', 'force-branches', 'no-metadata-branch', 'composer', 'version', 'help'];
+    private const OPTIONS = ['repo', 'ref', 'remote', 'source-url', 'dist-url', 'metadata-branch', 'metadata-alias', 'ref-names', 'out-dir', 'push', 'dry-run', 'force-branches', 'no-metadata-branch', 'composer', 'version', 'help'];
 
     private const VERSION_PATTERN = '/^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.]*)?$/';
 
     private PublicationGit $git;
+
+    private ?PublicationHistory $history = null;
 
     /** @param array<string, string|bool> $options */
     private function __construct(private string $command, private array $options)
@@ -24,6 +26,9 @@ final class PackagePublisher
             if ($command === 'metadata' && $this->flag('push')) {
                 throw new PublicationException('File-only metadata must be committed and pushed on your normal branch explicitly; omit --push.');
             }
+        }
+        if (! in_array($options['ref-names'] ?? 'full', ['full', 'short'], true)) {
+            throw new PublicationException('--ref-names must be full or short.');
         }
         $directory = (string) ($options['repo'] ?? getcwd());
         $probe = new PublicationGit($directory);
@@ -57,7 +62,9 @@ final class PackagePublisher
                 . "  --dry-run                 do not change branches/tags (Git objects may be created)\n"
                 . "  --push                    explicitly push generated refs atomically\n"
                 . "  --out-dir=DIR             write composer-packages.json to DIR\n"
-                . "  --no-metadata-branch      only write metadata to --out-dir; do not create a metadata branch\n";
+                . "  --no-metadata-branch      only write metadata to --out-dir; do not create a metadata branch\n"
+                . "  --ref-names=short         opt into legacy vendor-less package refs\n"
+                . "  --metadata-alias=NAME     also retain/write this JSON index filename\n";
 
             return $command === null && ! isset($options['help']) ? 2 : 0;
         }
@@ -261,6 +268,26 @@ final class PackagePublisher
     private function packages(string $commit): array
     {
         $packages = PublicationDiscovery::discover($this->git, $commit);
+        $mapped = [];
+        $refs = [];
+        foreach ($packages as $package) {
+            $package = new PublicationPackage($package->name, $package->path, $package->manifest, (string) ($this->options['ref-names'] ?? 'full'));
+            if (isset($refs[$package->branch()])) {
+                throw new PublicationException('Package ref collision between '.$refs[$package->branch()].' and '.$package->name.'. Use full ref names.');
+            }
+            $refs[$package->branch()] = $package->name;
+            $mapped[] = $package;
+        }
+        $packages = $mapped;
+        $branch = $this->metadataBranch();
+        if (in_array($this->command, ['metadata', 'release', 'verify'], true) && $this->git->ref('refs/heads/'.$branch) === null) {
+            foreach (explode("\n", $this->git->out(['for-each-ref', '--format=%(refname)', 'refs/remotes/'])) as $tracking) {
+                if (str_ends_with($tracking, '/'.$branch)) {
+                    throw new PublicationException('Local metadata baseline '.$branch.' is missing while '.$tracking.' exists. Create an inspected local metadata branch from the published tracking ref before regenerating.');
+                }
+            }
+        }
+        $this->history = new PublicationHistory($this->git, $branch, isset($this->options['metadata-alias']) ? (string) $this->options['metadata-alias'] : null);
         $metadata = $this->flag('no-metadata-branch') ? null : $this->metadataBranch();
         $checkedOut = $this->git->out(['worktree', 'list', '--porcelain']);
         foreach (array_merge($metadata === null ? [] : [$metadata], array_map(static fn (PublicationPackage $p): string => $p->branch(), $packages)) as $branch) {
@@ -271,14 +298,6 @@ final class PackagePublisher
         foreach ($packages as $package) {
             if ($package->branch() === $metadata) {
                 throw new PublicationException('Metadata and package branches must be distinct.');
-            }
-        }
-        $parent = $metadata === null ? null : $this->git->ref('refs/heads/'.$metadata);
-        if ($parent !== null) {
-            $files = explode("\n", $this->git->out(['ls-tree', '--name-only', $parent]));
-            sort($files);
-            if ($files !== ['README.md', 'composer-packages.json'] && $files !== ['README.md', 'packages.json']) {
-                throw new PublicationException('Metadata branch already contains unrelated files; refusing to replace it.');
             }
         }
         return $packages;
@@ -377,20 +396,23 @@ final class PackagePublisher
             if ($entries === []) {
                 continue;
             }
-            uksort($entries, static function (string $a, string $b): int {
-                if ($a === 'dev-main' || $b === 'dev-main') {
-                    return $a === 'dev-main' ? -1 : 1;
-                }
-
-                return version_compare($b, $a);
-            });
             $document['packages'][$package->name] = $entries;
         }
+        $document = $this->history->merge($document);
+        foreach ($document['packages'] as &$versions) {
+            uksort($versions, static function (string $a, string $b): int {
+                if ($a === 'dev-main' || $b === 'dev-main') {
+                    return $a === $b ? 0 : ($a === 'dev-main' ? -1 : 1);
+                }
+                return version_compare(ltrim($b, 'v'), ltrim($a, 'v'));
+            });
+        }
+        unset($versions);
         if ($document['packages'] === []) {
             throw new PublicationException('No dist/<package> branches or release tags exist yet; run `split` or `release` first.');
         }
         ksort($document['packages'], SORT_STRING);
-        $this->assertConsistent($document, $internal);
+        $this->assertConsistent($document, array_keys($document['packages']));
 
         return $document;
     }
@@ -451,8 +473,8 @@ final class PackagePublisher
                     if (! in_array($dependency, $internal, true)) {
                         continue;
                     }
-                    $versions = array_keys($document['packages'][$dependency] ?? []);
-                    if (\Composer\Semver\Semver::satisfiedBy($versions, (string) $constraint) === []) {
+                    $available = array_keys($document['packages'][$dependency] ?? []);
+                    if (\Composer\Semver\Semver::satisfiedBy($available, (string) $constraint) === []) {
                         $problems[] = "$name $version requires $dependency $constraint, but no published version satisfies it";
                     }
                 }
@@ -482,8 +504,10 @@ final class PackagePublisher
         if (! is_dir($directory) && ! mkdir($directory, 0755, true) && ! is_dir($directory)) {
             throw new PublicationException("Cannot create $directory.");
         }
-        file_put_contents($directory.'/composer-packages.json', $json);
-        echo "Wrote $directory/composer-packages.json\n";
+        foreach ($this->history->filenames as $filename) {
+            file_put_contents($directory.'/'.$filename, $json);
+            echo "Wrote $directory/$filename\n";
+        }
     }
 
     /** @param array{packages: array<string, array<string, array<string, mixed>>>} $document */
@@ -493,13 +517,13 @@ final class PackagePublisher
         $readme = "# Composer repository for the workspace packages\n\n"
             ."Generated by `composer source:publish`; do not edit. `composer-packages.json` lists every workspace package and version published from the monorepo.\n\n"
             ."Add it to a project's `composer.json`:\n\n```json\n{ \"repositories\": [ { \"type\": \"composer\", \"url\": \"".$this->repositoryUrlHint($branch)."\" } ] }\n```\n";
-        $tree = $this->git->out(['mktree'], sprintf(
-            "100644 blob %s\tREADME.md\n100644 blob %s\tcomposer-packages.json\n",
-            $this->git->out(['hash-object', '-w', '--stdin'], $readme),
-            $this->git->out(['hash-object', '-w', '--stdin'], $json),
-        ));
-
-        $parent = $this->git->ref('refs/heads/'.$branch);
+        $entries = ["100644 blob ".$this->git->out(['hash-object', '-w', '--stdin'], $readme)."\tREADME.md\n"];
+        $blob = $this->git->out(['hash-object', '-w', '--stdin'], $json);
+        foreach ($this->history->filenames as $filename) {
+            $entries[] = "100644 blob $blob\t$filename\n";
+        }
+        $tree = $this->git->out(['mktree'], implode('', $entries));
+        $parent = $this->history->reference;
         if ($parent !== null && $this->git->out(['rev-parse', $parent.'^{tree}']) === $tree) {
             echo "Metadata branch $branch is already up to date.\n";
 
@@ -507,7 +531,7 @@ final class PackagePublisher
         }
         $message = sprintf('Update the Composer package metadata (%d packages, %d versions)', count($document['packages']), array_sum(array_map('count', $document['packages'])));
         $commit = $this->git->out(array_merge(['commit-tree', $tree], $parent === null ? [] : ['-p', $parent], ['-m', $message]));
-        $this->git->out(['update-ref', 'refs/heads/'.$branch, $commit]);
+        $this->git->out(['update-ref', 'refs/heads/'.$branch, $commit, $parent ?? str_repeat('0', 40)]);
         echo "Metadata branch $branch updated (".substr($commit, 0, 10).").\n";
     }
 

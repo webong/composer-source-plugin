@@ -245,6 +245,8 @@ if split metadata --no-metadata-branch >/dev/null 2>&1; then fail 'file-only mod
 if split metadata --no-metadata-branch --metadata-branch=custom --out-dir="$MONO/composer" >/dev/null 2>&1; then fail 'conflicting metadata options accepted'; fi
 if split metadata --no-metadata-branch --push --out-dir="$MONO/composer" >/dev/null 2>&1; then fail 'file-only metadata silently claimed to push'; fi
 # Remove only the fixture metadata ref, then prove release does not recreate it.
+# This scenario has no known published metadata baseline; remote-only migration is tested separately.
+git -C "$MONO" update-ref -d refs/remotes/origin/dist/composer
 git -C "$MONO" update-ref -d refs/heads/dist/composer
 split release --version=0.3.0 --no-metadata-branch --out-dir="$MONO/composer" >/dev/null
 if git -C "$MONO" show-ref --verify --quiet refs/heads/dist/composer; then fail 'file-only release created a metadata branch'; fi
