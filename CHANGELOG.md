@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.1 — 2026-11-16
 
 - Fix committed workspace discovery when nested Composer manifests create their parent directories first.
 - Support publishing Composer-plugin workspace packages without losing plugin metadata or binaries.
